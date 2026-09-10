@@ -82,7 +82,10 @@ _cmdr_completions() {
             _cmdr_complete_hosts
             return ;;
         --host)
-            COMPREPLY=( $(compgen -W "add list rm" -- "$cur") )
+            COMPREPLY=( $(compgen -W "add list rm sync-etc" -- "$cur") )
+            return ;;
+        sync-etc|sync-hosts)
+            COMPREPLY=( $(compgen -W "--clear" -- "$cur") )
             return ;;
         --flow)
             COMPREPLY=( $(compgen -W "run list import show" -- "$cur") )
@@ -180,7 +183,7 @@ _cmdr_completions() {
             -w -W -u -n -v -V -h
             --help --version --undo --dry-run --local --save
             --trust --untrust --pick --danger
-            --capture --on --all-hosts
+            --capture --on --all-hosts --etc --clear
             --desc --alias --env --env-clear
             --chain --playbook --playbooks
             --note --notes --outputs --pack

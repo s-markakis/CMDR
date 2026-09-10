@@ -84,6 +84,34 @@ okc  "unknown-host"   1                           "$C" -r hs @nope
 okg  "host-rm"        "Host removed"              "$C" --host rm web01
 okc  "host-bad-sub"   1                           "$C" --host frobnicate
 
+section "ETC-HOSTS SYNC"
+newdata
+ETC="$CMDR_DATA_DIR/etc_hosts"
+printf '127.0.0.1\tlocalhost\n' > "$ETC"
+export CMDR_ETC_HOSTS="$ETC"
+okc  "etc-bad-ip"      1                           "$C" --host add 999.1.1.1 --name bad --hostname bad.htb
+okc  "etc-bad-name"    1                           "$C" --host add 10.0.0.1 --name bad --hostname 'bad name!'
+"$C" --host add 10.129.51.189 --name snapped --hostname 'snapped.htb admin.snapped.htb' >/dev/null 2>&1
+okg  "etc-sync"        "Synced 1 host"             "$C" --host sync-etc
+okg  "etc-line"        "10.129.51.189[[:space:]]+snapped.htb admin.snapped.htb"  cat "$ETC"
+okg  "etc-marker"      "cmdr:default"              cat "$ETC"
+okg  "etc-preserved"   "127.0.0.1"                 cat "$ETC"
+okg  "etc-idempotent"  "already current"          "$C" --host sync-etc
+okg  "etc-one-block"   "^1$"                       bash -c "grep -c '>>> cmdr:default >>>' '$ETC'"
+okg  "etc-list-mark"   "in /etc/hosts"            "$C" --host list
+"$C" --host add 10.10.10.9 --name dc --hostname dc.htb --etc >/dev/null 2>&1
+okg  "etc-add-etc"     "10.10.10.9[[:space:]]+dc.htb"  cat "$ETC"
+okg  "etc-two-block"   "^1$"                       bash -c "grep -c '>>> cmdr:default >>>' '$ETC'"
+printf '192.168.1.1\tmanual.htb\n' >> "$ETC"
+"$C" --host add 192.168.1.2 --name manual --hostname manual.htb >/dev/null 2>&1
+okg  "etc-collision"   "already in .* .kept as-is."  "$C" --host sync-etc
+okg  "etc-manual-kept" "192.168.1.1"               cat "$ETC"
+okg  "etc-clear"       "Removed the cmdr block"    "$C" --host sync-etc --clear
+okng "etc-clear-gone"  "cmdr:default"              cat "$ETC"
+okg  "etc-clear-keeps" "manual.htb"                cat "$ETC"
+okg  "etc-clear-again" "No cmdr block"             "$C" --host sync-etc --clear
+unset CMDR_ETC_HOSTS
+
 section "OUTPUT CAPTURE"
 newdata
 "$C" -a gt 'echo token=ABC123' net >/dev/null 2>&1

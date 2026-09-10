@@ -100,6 +100,8 @@ CMDR_HOST_OS=""        # --os                  (host add)
 CMDR_HOST_USER=""      # --user                (host add)
 CMDR_HOST_PORT=""      # --port                (host add)
 CMDR_HOST_HOSTNAME=""  # --hostname            (host add)
+CMDR_HOST_ETC=false    # --etc                 (host add: also write /etc/hosts)
+CMDR_ETC_CLEAR=false   # --clear               (host sync-etc: remove the block)
 CMDR_REPORT_FORMAT=""  # --format              (report: md|csv|html|pdf)
 
 # Write target: defaults to workspace commands, overridden by --local
@@ -396,6 +398,7 @@ main() {
                                 --os)       shift; [ "$#" -ge 1 ] && CMDR_HOST_OS="$1" && shift ;;
                                 --user)     shift; [ "$#" -ge 1 ] && CMDR_HOST_USER="$1" && shift ;;
                                 --port)     shift; [ "$#" -ge 1 ] && CMDR_HOST_PORT="$1" && shift ;;
+                                --etc)      CMDR_HOST_ETC=true; shift ;;
                                 -v|-n|--dry-run|--local|--save) shift ;;
                                 *) break ;;
                             esac
@@ -403,8 +406,12 @@ main() {
                         ;;
                     list|ls) action="host_list"; shift ;;
                     rm|del)  action="host_rm"; shift; [ "$#" -ge 1 ] && action_args+=("$1") && shift ;;
+                    sync-etc|sync-hosts)
+                        action="host_sync_etc"; shift
+                        [ "${1:-}" = "--clear" ] && { CMDR_ETC_CLEAR=true; shift; }
+                        ;;
                     *)
-                        echo -e "${RED}Error:${NC} Unknown host subcommand '${1:-}'. Use add/list/rm." >&2
+                        echo -e "${RED}Error:${NC} Unknown host subcommand '${1:-}'. Use add/list/rm/sync-etc." >&2
                         exit 1 ;;
                 esac
                 ;;
@@ -568,7 +575,7 @@ main() {
 
     # ----- Lock only mutating actions, for the duration of the write -----
     case "$action" in
-        add|edit|delete|set_env|clear_env|create_playbook|add_note|install|load_pack|undo|switch_workspace|trust_local|untrust_local|host_add|host_rm|add_finding|lock_workspace|unlock_workspace|flow_import|set_secret|clear_secret|import_ext)
+        add|edit|delete|set_env|clear_env|create_playbook|add_note|install|load_pack|undo|switch_workspace|trust_local|untrust_local|host_add|host_rm|host_sync_etc|add_finding|lock_workspace|unlock_workspace|flow_import|set_secret|clear_secret|import_ext)
             acquire_lock ;;
     esac
 
@@ -608,6 +615,7 @@ main() {
         host_add)         host_add "${action_args[0]:-}" ;;
         host_list)        host_list ;;
         host_rm)          host_rm "${action_args[0]:-}" ;;
+        host_sync_etc)    etc_hosts_sync ;;
 
         # Findings & Reporting
         add_finding)      add_finding "${action_args[0]:-}" "${action_args[1]:-}" "${action_args[2]:-}" ;;

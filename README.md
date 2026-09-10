@@ -346,6 +346,41 @@ cmdr -r nmap --all-hosts        # run once per defined host
 cmdr -r linpeas --on dc01       # execute over SSH (uses user/port from the host)
 ```
 
+### /etc/hosts sync
+
+`--hostname` may carry several space-separated names (the first is canonical for
+`{RHOSTNAME}` and SSH). `cmdr --host sync-etc` mirrors every host that has a
+`--hostname` into a managed, per-workspace block in `/etc/hosts`:
+
+```bash
+cmdr --host add 10.129.51.189 --name snapped \
+     --hostname 'snapped.htb admin.snapped.htb' --etc   # add + write /etc/hosts
+cmdr --host sync-etc                                     # re-push the whole workspace
+cmdr --host sync-etc --clear                             # remove this workspace's block
+```
+
+```text
+# >>> cmdr:htb-box >>>
+# managed by 'cmdr --host sync-etc' — lines between the markers are overwritten
+10.129.51.189   snapped.htb admin.snapped.htb
+# <<< cmdr:htb-box <<<
+```
+
+The block is rewritten on every sync (no duplicates), lines outside it are left
+intact, and `sudo` is used only when `/etc/hosts` is not already writable *and*
+the content changed. A one-time `/etc/hosts.cmdr.bak` is kept, the macOS DNS
+cache is flushed after a change, and any hand-added entry for a managed name is
+reported and left alone. Set `$CMDR_ETC_HOSTS` to target a different file.
+
+For the classic muscle-memory flow, source `contrib/addhost.sh` (bash or zsh):
+
+```bash
+. /path/to/CMDR/contrib/addhost.sh
+addhost $IP snapped.htb admin.snapped.htb    # -> cmdr --host add ... --etc
+synchosts                                    # -> cmdr --host sync-etc
+delhost snapped                              # -> cmdr --host rm snapped
+```
+
 ## Output Capture → Chaining
 
 Pipe a command's stdout into a workspace env var, then use it in the next command —
@@ -554,9 +589,10 @@ Sync refuses to run when the data dir is the CMDR install directory — point
 
 | Flag | Usage | Description |
 |------|-------|-------------|
-| `--host add` | `cmdr --host add <ip> --name <n> [--hostname h] [--os o] [--user u] [--port p]` | Add/update a host |
-| `--host list` | `cmdr --host list` | List hosts |
+| `--host add` | `cmdr --host add <ip> --name <n> [--hostname 'h [h2..]'] [--os o] [--user u] [--port p] [--etc]` | Add/update a host (`--etc` also writes `/etc/hosts`) |
+| `--host list` | `cmdr --host list` | List hosts (marks which are in `/etc/hosts`) |
 | `--host rm` | `cmdr --host rm <name>` | Remove a host |
+| `--host sync-etc` | `cmdr --host sync-etc [--clear]` | Mirror workspace hosts into `/etc/hosts` (or remove the block) |
 
 ### Findings & History
 

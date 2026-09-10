@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`/etc/hosts` sync for the host model**: `cmdr --host sync-etc` mirrors every
+  workspace host that has a `--hostname` into a managed, per-workspace block in
+  `/etc/hosts` (`# >>> cmdr:<workspace> >>>` … `# <<< cmdr:<workspace> <<<`).
+  The block is rewritten wholesale on each run, so entries never duplicate or
+  accumulate; everything outside the block is preserved byte-for-byte.
+  `--host sync-etc --clear` removes the block; `--host rm` prints a hint.
+- **`--etc` on `cmdr --host add`**: adds the host and runs the sync in one step.
+- **`--hostname` accepts multiple names**: space-separated; the first is
+  canonical for `{RHOSTNAME}` / SSH, all of them are written to `/etc/hosts`.
+- Writing `/etc/hosts` escalates with `sudo` only when the file is not already
+  writable and only when the content actually changes, keeps a one-time
+  `/etc/hosts.cmdr.bak`, and flushes the DNS cache on macOS. Pre-existing
+  hand-added entries for a managed name are reported and left untouched.
+  `$CMDR_ETC_HOSTS` overrides the target path.
+- `cmdr --host list` marks which hosts are currently in `/etc/hosts`.
+- **`contrib/addhost.sh`**: POSIX `addhost` / `synchosts` / `delhost` shell
+  shims (source from bash or zsh) for the classic `addhost $IP box.htb` flow.
+
 ## [3.3.0]
 
 ### Added

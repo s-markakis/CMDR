@@ -308,6 +308,9 @@ apply_host_vars() {
     os=$(_host_get "$name" os)
     user=$(_host_get "$name" user)
     port=$(_host_get "$name" port)
+    # hostname may carry several space-separated names (all written to
+    # /etc/hosts by --host sync-etc); the first is canonical for var fill / SSH.
+    host="${host%% *}"
     target="${ip:-$host}"
 
     cmd="${cmd//\{TARGET\}/$target}"
@@ -327,6 +330,7 @@ build_ssh_cmd() {
     hostname=$(_host_get "$host" hostname)
     user=$(_host_get "$host" user)
     port=$(_host_get "$host" port)
+    hostname="${hostname%% *}"          # first name only for the SSH destination
     target="${ip:-$hostname}"
 
     if [ -z "$target" ]; then
@@ -352,8 +356,18 @@ host_add() {
         exit 1
     fi
 
+    if ! _etc_valid_ip "$ip"; then
+        echo -e "${RED}Error:${NC} '$ip' is not a valid IPv4/IPv6 address." >&2
+        exit 1
+    fi
+
     local name="${CMDR_HOST_NAME:-$ip}"
     name=$(sanitize_tag "$name") || exit 1
+
+    if [ -n "$CMDR_HOST_HOSTNAME" ] && ! _etc_valid_names "$CMDR_HOST_HOSTNAME"; then
+        echo -e "${RED}Error:${NC} --hostname must be space-separated DNS names ([A-Za-z0-9.-])." >&2
+        exit 1
+    fi
 
     [ ! -f "$HOSTS_FILE" ] && echo "{}" > "$HOSTS_FILE"
 
@@ -371,6 +385,19 @@ host_add() {
 
     log_event "INFO" "Host added: $name ($ip)"
     echo -e "${GREEN}Host added:${NC} $name ($ip)"
+
+    # Surface any hand-added /etc/hosts entry for these names. When --etc is set
+    # the sync below prints this itself, so only do it here for the plain add.
+    [ -n "$CMDR_HOST_HOSTNAME" ] && [ "${CMDR_HOST_ETC:-false}" != true ] \
+        && _etc_hosts_report_existing "$CMDR_HOST_HOSTNAME"
+
+    if [ "${CMDR_HOST_ETC:-false}" = true ]; then
+        if [ -z "$CMDR_HOST_HOSTNAME" ]; then
+            echo -e "${YELLOW}Note:${NC} --etc ignored — host has no --hostname to write to /etc/hosts."
+        else
+            etc_hosts_sync
+        fi
+    fi
 }
 
 # List all hosts in the active workspace.
@@ -386,12 +413,14 @@ host_list() {
         echo -e "${CYAN}Workspace: $ACTIVE_WORKSPACE${NC}"
     fi
     echo ""
-    printf "  ${CYAN}%-16s  %-16s  %-20s  %-10s  %s${NC}\n" "NAME" "IP" "HOSTNAME" "OS" "USER"
+    printf "  ${CYAN}%-14s  %-15s  %-24s  %-8s  %-9s  %s${NC}\n" "NAME" "IP" "HOSTNAME" "OS" "USER" "HOSTS"
     # Use ASCII Unit Separator (0x1f) so empty middle fields aren't collapsed
     # by read's IFS-whitespace merging.
     jq -r 'to_entries[] | [.key, (.value.ip//""), (.value.hostname//""), (.value.os//""), (.value.user//"")] | join("\u001f")' "$HOSTS_FILE" \
         | while IFS=$'\037' read -r name ip hn os user; do
-            printf "  %-16s  %-16s  %-20s  %-10s  %s\n" "$name" "$ip" "$hn" "$os" "$user"
+            mark=""
+            _etc_hosts_has "$ip" "${hn%% *}" && mark="in /etc/hosts"
+            printf "  %-14s  %-15s  %-24s  %-8s  %-9s  %s\n" "$name" "$ip" "$hn" "$os" "$user" "$mark"
         done
 }
 
@@ -411,6 +440,247 @@ host_rm() {
     jq --arg n "$name" 'del(.[$n])' "$HOSTS_FILE" > "$tmp_file" && mv "$tmp_file" "$HOSTS_FILE"
     log_event "INFO" "Host removed: $name"
     echo -e "${GREEN}Host removed:${NC} $name"
+
+    if _etc_hosts_block_present; then
+        echo -e "${YELLOW}Note:${NC} run 'cmdr --host sync-etc' to drop it from /etc/hosts too."
+    fi
+}
+
+# ----------------------------------------------------------------------------
+# Section 8b-2: /etc/hosts synchronisation
+# Mirror the workspace's hosts (those with a --hostname) into a managed,
+# per-workspace block in /etc/hosts, so `box.htb` resolves without hand-editing
+# the file. The block is delimited by markers and rewritten wholesale on every
+# sync, so entries never accumulate or duplicate. Everything outside the block
+# is preserved byte-for-byte. CMDR_ETC_HOSTS overrides the target path (tests,
+# or a non-root workflow pointing at a user-writable file).
+# ----------------------------------------------------------------------------
+
+_etc_hosts_file()  { echo "${CMDR_ETC_HOSTS:-/etc/hosts}"; }
+_etc_block_begin() { echo "# >>> cmdr:${ACTIVE_WORKSPACE} >>>"; }
+_etc_block_end()   { echo "# <<< cmdr:${ACTIVE_WORKSPACE} <<<"; }
+
+# Loose IPv4/IPv6 validation — enough to keep junk out of a system file.
+_etc_valid_ip() {
+    local ip="$1" o
+    if printf '%s\n' "$ip" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
+        local IFS=.
+        for o in $ip; do
+            [ "$o" -le 255 ] 2>/dev/null || return 1
+        done
+        return 0
+    fi
+    # IPv6: hex groups separated by colons, at least one colon pair.
+    printf '%s\n' "$ip" | grep -qE '^[0-9A-Fa-f:]+:[0-9A-Fa-f:.]*$'
+}
+
+# One or more space-separated DNS-ish names, each [A-Za-z0-9.-].
+_etc_valid_names() {
+    local n
+    local -a toks
+    read -ra toks <<< "$1"
+    [ "${#toks[@]}" -gt 0 ] || return 1
+    for n in "${toks[@]}"; do
+        printf '%s\n' "$n" | grep -qE '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$' || return 1
+    done
+    return 0
+}
+
+# True if this workspace's managed block exists in the target file.
+_etc_hosts_block_present() {
+    local f
+    f=$(_etc_hosts_file)
+    [ -f "$f" ] && grep -qF "$(_etc_block_begin)" "$f"
+}
+
+# Print "<ip>\t<cmdr|manual>" for every /etc/hosts line that maps <name>.
+# "cmdr" = inside this workspace's block, "manual" = anywhere else.
+_etc_hosts_lookup() {
+    local name="$1" f begin end line in_block=0 rc=1
+    [ -n "$name" ] || return 1
+    f=$(_etc_hosts_file)
+    [ -f "$f" ] || return 1
+    begin=$(_etc_block_begin)
+    end=$(_etc_block_end)
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            "$begin") in_block=1; continue ;;
+            "$end")   in_block=0; continue ;;
+            '#'*|'')  continue ;;
+        esac
+        line="${line%%#*}"
+        local -a parts
+        read -ra parts <<< "$line"
+        [ "${#parts[@]}" -ge 2 ] || continue
+        local i
+        for (( i=1; i<${#parts[@]}; i++ )); do
+            [ "${parts[$i]}" = "$name" ] || continue
+            if [ "$in_block" = 1 ]; then printf '%s\tcmdr\n' "${parts[0]}"
+            else printf '%s\tmanual\n' "${parts[0]}"; fi
+            rc=0
+        done
+    done < "$f"
+    return $rc
+}
+
+# True if <name> currently resolves to <ip> anywhere in the target file.
+_etc_hosts_has() {
+    local ip="$1" name="$2"
+    [ -n "$name" ] || return 1
+    _etc_hosts_lookup "$name" 2>/dev/null | cut -f1 | grep -qxF "$ip"
+}
+
+# Show pre-existing /etc/hosts entries for the given names that CMDR will NOT
+# touch — i.e. lines outside this workspace's managed block (hand-added, or
+# another workspace's block). Returns 0 if it printed anything.
+_etc_hosts_report_existing() {
+    local n ip src rc=1
+    local -a want
+    read -ra want <<< "$1"
+    for n in "${want[@]}"; do
+        while IFS=$'\t' read -r ip src; do
+            [ -n "$ip" ] || continue
+            [ "$src" = manual ] || continue      # our own block is about to be rewritten
+            echo -e "  ${YELLOW}already in ${NC}$(_etc_hosts_file)${YELLOW} (kept as-is):${NC} ${ip}  ${n}"
+            rc=0
+        done <<< "$(_etc_hosts_lookup "$n" 2>/dev/null)"
+    done
+    return $rc
+}
+
+# Emit the block body ("<ip>\t<names>" per line) from the host inventory.
+_etc_hosts_block_body() {
+    [ -f "$HOSTS_FILE" ] || return 0
+    jq -r '
+        to_entries[]
+        | select((.value.hostname // "") != "")
+        | "\(.value.ip // "")\(.value.hostname)"
+    ' "$HOSTS_FILE" 2>/dev/null \
+    | while IFS=$'\037' read -r ip names; do
+        [ -n "$ip" ] || continue
+        printf '%s\t%s\n' "$ip" "$names"
+    done
+}
+
+# Copy $1 over $2, escalating with sudo only if needed, keeping one backup.
+_etc_hosts_install() {
+    local src="$1" dst="$2" need_sudo=""
+    if [ -w "$dst" ] || { [ ! -e "$dst" ] && [ -w "$(dirname "$dst")" ]; }; then
+        need_sudo=""
+    elif command -v sudo >/dev/null 2>&1; then
+        need_sudo=1
+        echo -e "${YELLOW}Writing $dst needs root — you may be prompted for a password.${NC}"
+    else
+        echo -e "${RED}Error:${NC} $dst is not writable and 'sudo' is unavailable." >&2
+        rm -f "$src"
+        return 1
+    fi
+
+    if [ -f "$dst" ] && [ ! -f "${dst}.cmdr.bak" ]; then
+        if [ -n "$need_sudo" ]; then sudo cp -p "$dst" "${dst}.cmdr.bak"
+        else cp -p "$dst" "${dst}.cmdr.bak"; fi 2>/dev/null \
+            && echo "  backup: ${dst}.cmdr.bak"
+    fi
+
+    if { [ -n "$need_sudo" ] && sudo cp "$src" "$dst"; } || \
+       { [ -z "$need_sudo" ] && cp "$src" "$dst"; }; then
+        rm -f "$src"
+        _etc_hosts_flush_dns "$need_sudo"
+        return 0
+    fi
+    echo -e "${RED}Error:${NC} failed to write $dst" >&2
+    rm -f "$src"
+    return 1
+}
+
+# Best-effort DNS cache flush (macOS only; silent no-op elsewhere).
+_etc_hosts_flush_dns() {
+    [ "$(uname -s)" = Darwin ] || return 0
+    if [ -n "$1" ]; then
+        sudo dscacheutil -flushcache 2>/dev/null
+        sudo killall -HUP mDNSResponder 2>/dev/null
+    else
+        dscacheutil -flushcache 2>/dev/null
+        killall -HUP mDNSResponder 2>/dev/null
+    fi
+    return 0
+}
+
+# Rewrite this workspace's block in /etc/hosts from the host inventory.
+# `--clear` (or CMDR_ETC_CLEAR=true) removes the block instead.
+etc_hosts_sync() {
+    local clear=false
+    { [ "${1:-}" = "--clear" ] || [ "${CMDR_ETC_CLEAR:-false}" = true ]; } && clear=true
+
+    local f begin end body="" outside
+    f=$(_etc_hosts_file)
+    begin=$(_etc_block_begin)
+    end=$(_etc_block_end)
+
+    [ "$clear" = false ] && body=$(_etc_hosts_block_body)
+
+    if [ "$clear" = false ] && [ -z "$body" ]; then
+        echo -e "${YELLOW}No hosts with a --hostname in workspace '${ACTIVE_WORKSPACE}'.${NC}"
+        echo    "Add one:  cmdr --host add <ip> --name <n> --hostname <fqdn> --etc"
+        return 0
+    fi
+
+    if [ "$clear" = true ] && ! _etc_hosts_block_present; then
+        echo -e "${YELLOW}No cmdr block for workspace '${ACTIVE_WORKSPACE}' in ${f}.${NC}"
+        return 0
+    fi
+
+    # Everything outside our block (command substitution strips trailing blanks).
+    outside=""
+    if [ -f "$f" ]; then
+        outside=$(awk -v b="$begin" -v e="$end" '
+            $0==b { inb=1; next }
+            $0==e { inb=0; next }
+            !inb  { print }
+        ' "$f")
+    fi
+
+    # Report collisions before we touch anything.
+    if [ "$clear" = false ]; then
+        local allnames
+        allnames=$(printf '%s\n' "$body" | cut -f2- | tr '\n' ' ')
+        _etc_hosts_report_existing "$allnames"
+    fi
+
+    local work
+    work=$(_mktemp_beside "$f" 2>/dev/null) || work=$(mktemp "${TMPDIR:-/tmp}/cmdr_hosts.XXXXXX") || {
+        echo -e "${RED}Error:${NC} could not create a temp file." >&2
+        return 1
+    }
+    {
+        [ -n "$outside" ] && printf '%s\n' "$outside"
+        if [ "$clear" = false ]; then
+            printf '%s\n' "$begin"
+            printf '%s\n' "# managed by 'cmdr --host sync-etc' — lines between the markers are overwritten"
+            printf '%s\n' "$body"
+            printf '%s\n' "$end"
+        fi
+    } > "$work"
+
+    if [ -f "$f" ] && cmp -s "$work" "$f"; then
+        rm -f "$work"
+        echo -e "${GREEN}/etc/hosts already current${NC} (workspace '${ACTIVE_WORKSPACE}')."
+        return 0
+    fi
+
+    if _etc_hosts_install "$work" "$f"; then
+        if [ "$clear" = true ]; then
+            echo -e "${GREEN}Removed${NC} the cmdr block for '${ACTIVE_WORKSPACE}' from ${f}."
+        else
+            echo -e "${GREEN}Synced${NC} $(printf '%s\n' "$body" | grep -c .) host line(s) to ${f}:"
+            printf '%s\n' "$body" | while IFS=$'\t' read -r ip names; do
+                echo "    ${ip}    ${names}"
+            done
+        fi
+        log_event "INFO" "etc-hosts sync (workspace=$ACTIVE_WORKSPACE clear=$clear)"
+        return 0
+    fi
+    return 1
 }
 
 # ----------------------------------------------------------------------------
