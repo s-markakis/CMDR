@@ -211,10 +211,15 @@ _cmdr_completions() {
     done
 }
 
-complete -F _cmdr_completions cmdr
-
-# Zsh support via bashcompinit
+# Under zsh, `complete` is a bashcompinit shim that itself needs `compinit`
+# (for `compdef`). Load bashcompinit here, but only register when both pieces
+# are in place — otherwise sourcing this file spews "command not found".
+# The installer adds `bashcompinit` to a zsh rc after its `compinit` line.
 if [ -n "$ZSH_VERSION" ]; then
-    autoload -Uz bashcompinit && bashcompinit
+    autoload -Uz bashcompinit 2>/dev/null && bashcompinit 2>/dev/null
+    if typeset -f compdef >/dev/null 2>&1 && typeset -f complete >/dev/null 2>&1; then
+        complete -F _cmdr_completions cmdr
+    fi
+elif command -v complete >/dev/null 2>&1; then
     complete -F _cmdr_completions cmdr
 fi

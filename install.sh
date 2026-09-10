@@ -56,8 +56,10 @@ fi
 
 # Detect shell config file
 SHELL_RC=""
+IS_ZSH=0
 if [ -n "$ZSH_VERSION" ] || [ "$(basename "$SHELL")" = "zsh" ]; then
     SHELL_RC="$HOME/.zshrc"
+    IS_ZSH=1
 else
     SHELL_RC="$HOME/.bashrc"
 fi
@@ -129,6 +131,10 @@ if [ -f "$COMPLETION_FILE" ]; then
         echo "" >> "$SHELL_RC"
         echo "# CMDR - Tab completion" >> "$SHELL_RC"
         echo "$export_line" >> "$SHELL_RC"
+        # zsh needs bashcompinit (after its own compinit) to provide `complete`.
+        if [ "$IS_ZSH" = 1 ] && ! grep -qF "bashcompinit" "$SHELL_RC" 2>/dev/null; then
+            echo "autoload -Uz compinit bashcompinit && compinit && bashcompinit" >> "$SHELL_RC"
+        fi
         echo "$source_line" >> "$SHELL_RC"
         echo -e "${GREEN}Tab completion enabled in $SHELL_RC${NC}"
     else
