@@ -136,6 +136,25 @@ if [ -f "$COMPLETION_FILE" ]; then
     fi
 fi
 
+# Optional: the addhost/synchosts/delhost shell shims (contrib/addhost.sh)
+ADDHOST_FILE="$SCRIPT_DIR/contrib/addhost.sh"
+if [ -f "$ADDHOST_FILE" ]; then
+    if grep -qF "contrib/addhost.sh" "$SHELL_RC" 2>/dev/null; then
+        echo -e "${GREEN}addhost shims already configured.${NC}"
+    else
+        echo ""
+        read -p "Enable the 'addhost'/'synchosts'/'delhost' shell shims? (y/N): " add_shims
+        if [ "$add_shims" = "y" ] || [ "$add_shims" = "Y" ]; then
+            {
+                echo ""
+                echo "# CMDR - addhost shims"
+                echo ". '$ADDHOST_FILE'"
+            } >> "$SHELL_RC"
+            echo -e "${GREEN}addhost shims enabled in $SHELL_RC${NC}"
+        fi
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}Installation complete!${NC}"
 echo -e "${YELLOW}Run 'source $SHELL_RC' or restart your terminal.${NC}"

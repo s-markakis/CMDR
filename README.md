@@ -372,7 +372,8 @@ the content changed. A one-time `/etc/hosts.cmdr.bak` is kept, the macOS DNS
 cache is flushed after a change, and any hand-added entry for a managed name is
 reported and left alone. Set `$CMDR_ETC_HOSTS` to target a different file.
 
-For the classic muscle-memory flow, source `contrib/addhost.sh` (bash or zsh):
+For the classic muscle-memory flow, source `contrib/addhost.sh` (bash or zsh) —
+`install.sh` offers to wire it into your shell rc, or add it by hand:
 
 ```bash
 . /path/to/CMDR/contrib/addhost.sh
@@ -380,6 +381,9 @@ addhost $IP snapped.htb admin.snapped.htb    # -> cmdr --host add ... --etc
 synchosts                                    # -> cmdr --host sync-etc
 delhost snapped                              # -> cmdr --host rm snapped
 ```
+
+If `cmdr` is not on your `PATH` (alias installs), set `CMDR_BIN=/path/to/cmdr.sh`
+before sourcing.
 
 ## Output Capture → Chaining
 

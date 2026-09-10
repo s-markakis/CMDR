@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cmdr --host list` marks which hosts are currently in `/etc/hosts`.
 - **`contrib/addhost.sh`**: POSIX `addhost` / `synchosts` / `delhost` shell
   shims (source from bash or zsh) for the classic `addhost $IP box.htb` flow.
+  `install.sh` offers to enable them (opt-in prompt), alongside the existing
+  Linux (apt/dnf/yum/pacman) and macOS (brew) dependency handling.
 
 ## [3.3.0]
 
