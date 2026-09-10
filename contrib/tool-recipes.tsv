@@ -1,0 +1,35 @@
+# CMDR tool-install recipe registry — one row per binary.
+# Consumed by contrib/cmdr-install-tool.sh to install a missing tool that a
+# stored command invokes. Tab-separated. '-' means "no recipe for this method".
+#
+# cols:  binary   brew_formula   go_module   pipx_pkg   apt_pkg   note
+#
+# Method preference is chosen by the installer per-platform (macOS: brew > go >
+# pipx; Linux: apt > go > pipx), filtered to methods that both have a recipe
+# here AND whose toolchain is installed. Add a row to teach it a new tool.
+#
+# NOTE: the `httpx` brew/go recipe is ProjectDiscovery's HTTP toolkit, NOT the
+# Python `httpx` HTTP client (which is `pip install httpx`). Don't "fix" it.
+
+# --- ProjectDiscovery (recon) ---
+subfinder	subfinder	github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest	-	-	passive subdomain enum
+httpx	httpx	github.com/projectdiscovery/httpx/cmd/httpx@latest	-	-	HTTP toolkit (PD, not python httpx)
+dnsx	dnsx	github.com/projectdiscovery/dnsx/cmd/dnsx@latest	-	-	DNS resolver
+naabu	naabu	github.com/projectdiscovery/naabu/v2/cmd/naabu@latest	-	-	fast port scanner (needs libpcap)
+katana	katana	github.com/projectdiscovery/katana/cmd/katana@latest	-	-	crawler
+nuclei	nuclei	github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest	-	-	template scanner
+
+# --- Other recon ---
+amass	amass	github.com/owasp-amass/amass/v4/...@master	-	amass	OWASP asset discovery
+masscan	masscan	-	-	masscan	internet-scale port scanner (run as root)
+gau	gau	github.com/lc/gau/v2/cmd/gau@latest	-	-	getallurls (lc/gau)
+waybackurls	-	github.com/tomnomnom/waybackurls@latest	-	-	wayback URLs (tomnomnom, no brew)
+
+# --- Common web/fuzzing tools (handy beyond the recon pack) ---
+ffuf	ffuf	github.com/ffuf/ffuf/v2@latest	-	ffuf	web fuzzer
+gobuster	gobuster	github.com/OJ/gobuster/v3@latest	-	gobuster	dir/dns brute
+feroxbuster	feroxbuster	-	-	feroxbuster	recursive content discovery
+dalfox	dalfox	github.com/hahwul/dalfox/v2@latest	-	-	XSS scanner
+nmap	nmap	-	-	nmap	port/service scanner
+sqlmap	sqlmap	-	sqlmap	sqlmap	SQL injection
+nikto	nikto	-	-	nikto	web server scanner

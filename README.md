@@ -385,6 +385,29 @@ delhost snapped                              # -> cmdr --host rm snapped
 If `cmdr` is not on your `PATH` (alias installs), set `CMDR_BIN=/path/to/cmdr.sh`
 before sourcing.
 
+## Installing a command's missing tool
+
+CMDR stores commands; it does not install their tools — a missing binary is a
+clean `exit 127` at run time (`bash: subfinder: command not found`).
+`contrib/cmdr-install-tool.sh` closes that gap: it maps a binary to an install
+recipe (`contrib/tool-recipes.tsv`) and installs it with the best method for
+your platform (macOS: `brew` > `go` > `pipx`; Linux: `apt` > `go` > `pipx`).
+
+Fail-closed: it prints a **plan** and installs nothing until you pass `-y` (or
+confirm). Unknown tools are reported, never guessed at.
+
+```bash
+contrib/cmdr-install-tool.sh --list           # show the recipe registry
+contrib/cmdr-install-tool.sh --for recon-chain # install the tools that one command needs
+contrib/cmdr-install-tool.sh --all-missing -n  # scan the whole store, dry-run the plan
+contrib/cmdr-install-tool.sh subfinder httpx -y  # install specific tools now
+```
+
+It reads the active workspace's store via `cmdr -s --json`, so `--for` /
+`--all-missing` reflect exactly what you have loaded. Add a row to
+`tool-recipes.tsv` to teach it a new tool. `go`-installed tools land in
+`$(go env GOPATH)/bin` — put that on your `PATH`.
+
 ## Output Capture → Chaining
 
 Pipe a command's stdout into a workspace env var, then use it in the next command —

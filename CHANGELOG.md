@@ -26,6 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shims (source from bash or zsh) for the classic `addhost $IP box.htb` flow.
   `install.sh` offers to enable them (opt-in prompt), alongside the existing
   Linux (apt/dnf/yum/pacman) and macOS (brew) dependency handling.
+- **`contrib/cmdr-install-tool.sh` + `contrib/tool-recipes.tsv`**: install the
+  external tool a stored command needs when it's missing. Resolves a binary to
+  a per-platform recipe (macOS `brew` > `go` > `pipx`; Linux `apt` > `go` >
+  `pipx`) and installs it — fail-closed (prints a plan, installs only on `-y`
+  or confirm). Modes: named binaries, `--for <tag>` (tools used by one command,
+  parsed out of pipelines), `--all-missing` (scan the whole store), `--list`,
+  `--dry-run`. Reads the store via `cmdr -s --json`; extend by adding a TSV row.
+
+### Fixed
+- **zsh completion no longer errors when sourced before `compinit`**:
+  `cmdr_completion.bash` loaded `bashcompinit` *after* its first `complete -F`
+  call, so a fresh zsh printed `command not found: complete` / `compdef`. It now
+  loads bashcompinit first and only registers when `complete`+`compdef` exist;
+  `install.sh` adds the `autoload -Uz compinit bashcompinit` line to a zsh rc.
 
 ## [3.3.0]
 
