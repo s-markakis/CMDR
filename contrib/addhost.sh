@@ -58,11 +58,19 @@ synchosts() {
     _addhost_cmdr --host sync-etc "$@"
 }
 
-# delhost <name>  — drop a host from the inventory (CMDR prints the /etc/hosts hint).
+# delhost <name>  — drop a host from the inventory. If a cmdr /etc/hosts block
+# exists, re-mirror it so the removed host's line goes too (empty inventory
+# clears the block). Pass --keep-etc to leave /etc/hosts untouched.
 delhost() {
+    _delhost_keep=0
+    case "${1:-}" in --keep-etc) _delhost_keep=1; shift ;; esac
     if [ "$#" -lt 1 ]; then
-        echo "usage: delhost <host-name>" >&2
+        echo "usage: delhost [--keep-etc] <host-name>" >&2
+        unset _delhost_keep
         return 2
     fi
-    _addhost_cmdr --host rm "$1"
+    _addhost_cmdr --host rm "$1" || { unset _delhost_keep; return $?; }
+    # Re-mirror /etc/hosts (may prompt for sudo) so the removed host's line goes.
+    [ "$_delhost_keep" -eq 0 ] && _addhost_cmdr --host sync-etc
+    unset _delhost_keep
 }

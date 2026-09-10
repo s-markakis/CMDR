@@ -387,6 +387,16 @@ before sourcing.
 
 ## Installing a command's missing tool
 
+First, see what a command (or the whole store) needs and what's missing:
+
+```bash
+cmdr --doctor              # every referenced tool: ok / missing (exits non-zero if any missing)
+cmdr --doctor recon-chain  # just the tools one command needs
+cmdr --doctor --json       # [{tool, present, path}]
+```
+
+`cmdr --pack load` also prints a missing-tool summary right after importing.
+
 CMDR stores commands; it does not install their tools — a missing binary is a
 clean `exit 127` at run time (`bash: subfinder: command not found`).
 `contrib/cmdr-install-tool.sh` closes that gap: it maps a binary to an install
@@ -627,6 +637,7 @@ Sync refuses to run when the data dir is the CMDR install directory — point
 |------|-------|-------------|
 | `--finding` | `cmdr --finding <sev> <host> "title" [--evidence path]` | Record a finding |
 | `--findings` | `cmdr --findings` | List findings |
+| `--doctor` | `cmdr --doctor [tag]` | Report which tools stored commands need and which are missing |
 | `--report` | `cmdr --report [file] [--format md\|csv\|html\|pdf]` | Render a report |
 | `--history` | `cmdr --history [n]` | Show recent run history |
 

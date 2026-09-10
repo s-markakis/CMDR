@@ -619,10 +619,16 @@ etc_hosts_sync() {
 
     [ "$clear" = false ] && body=$(_etc_hosts_block_body)
 
+    # Empty inventory + sync = mirror nothing: clear the block if one exists
+    # (so removing the last host tidies /etc/hosts), else just guide the user.
     if [ "$clear" = false ] && [ -z "$body" ]; then
-        echo -e "${YELLOW}No hosts with a --hostname in workspace '${ACTIVE_WORKSPACE}'.${NC}"
-        echo    "Add one:  cmdr --host add <ip> --name <n> --hostname <fqdn> --etc"
-        return 0
+        if _etc_hosts_block_present; then
+            clear=true
+        else
+            echo -e "${YELLOW}No hosts with a --hostname in workspace '${ACTIVE_WORKSPACE}'.${NC}"
+            echo    "Add one:  cmdr --host add <ip> --name <n> --hostname <fqdn> --etc"
+            return 0
+        fi
     fi
 
     if [ "$clear" = true ] && ! _etc_hosts_block_present; then

@@ -435,6 +435,11 @@ main() {
             --findings)
                 action="list_findings"; shift
                 ;;
+            --doctor)
+                action="doctor"; shift
+                [ "${1:-}" = "--help" ] && { display_subcommand_help "doctor"; exit 0; }
+                [ "$#" -ge 1 ] && [[ "${1:-}" != -* ]] && action_args+=("$1") && shift  # optional tag
+                ;;
             --report)
                 action="report"; shift
                 [ "$#" -ge 1 ] && [[ "${1:-}" != -* ]] && action_args+=("$1") && shift  # optional output file
@@ -621,6 +626,7 @@ main() {
         add_finding)      add_finding "${action_args[0]:-}" "${action_args[1]:-}" "${action_args[2]:-}" ;;
         list_findings)    list_findings ;;
         report)           generate_report "${action_args[0]:-}" ;;
+        doctor)           doctor_report "${action_args[0]:-}" ;;
 
         # History
         show_history)     show_history "${action_args[0]:-20}" ;;

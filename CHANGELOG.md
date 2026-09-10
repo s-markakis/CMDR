@@ -33,6 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or confirm). Modes: named binaries, `--for <tag>` (tools used by one command,
   parsed out of pipelines), `--all-missing` (scan the whole store), `--list`,
   `--dry-run`. Reads the store via `cmdr -s --json`; extend by adding a TSV row.
+  Surfaces per-recipe notes (e.g. naabu/libpcap, masscan/root) after install.
+  `install.sh` now also exposes it on `PATH` (symlink/alias) so the tip runs.
+- **`cmdr --doctor [tag]`**: report which external tools the stored commands
+  invoke and which are missing on this host (whole store, or one command).
+  Exits non-zero when anything is missing, prints the exact `cmdr-install-tool`
+  line, and has a `--json` form (`[{tool, present, path}]`). Baseline
+  shell/coreutils/curl/jq are not reported. `cmdr --pack load` prints the same
+  missing-tool summary right after importing a pack.
+
+### Changed
+- **`--host sync-etc` on an empty inventory now clears the block**: removing the
+  last host with a `--hostname` and re-syncing tidies the managed `/etc/hosts`
+  block away, instead of leaving it stale (mirror semantics: nothing in →
+  nothing out). The `delhost` shim re-syncs after removal (`--keep-etc` opts out).
+- **CI shellcheck now covers `contrib/*.sh`**, and the test suite gains sections
+  for `--doctor`, `cmdr-install-tool` (plan logic), the `/etc/hosts` empty-clear
+  path, and the `addhost`/`delhost` shims (197 assertions, up from 167).
 
 ### Fixed
 - **zsh completion no longer errors when sourced before `compinit`**:
@@ -40,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call, so a fresh zsh printed `command not found: complete` / `compdef`. It now
   loads bashcompinit first and only registers when `complete`+`compdef` exist;
   `install.sh` adds the `autoload -Uz compinit bashcompinit` line to a zsh rc.
+- **`cmdr-install-tool` / doctor tool extraction handles `xargs`**: a tool run as
+  `... | xargs -I{} <tool>` is now detected (the `xargs` flags are skipped). The
+  known limitation (no descent into `$(...)` / backticks / `bash -c`) is documented.
 
 ## [3.3.0]
 

@@ -75,7 +75,7 @@ _cmdr_completions() {
     fi
 
     case "$prev" in
-        -r|-d|-e|-c)
+        -r|-d|-e|-c|--doctor)
             _cmdr_complete_tags
             return ;;
         --on|rm|del)
@@ -187,7 +187,7 @@ _cmdr_completions() {
             --desc --alias --env --env-clear
             --chain --playbook --playbooks
             --note --notes --outputs --pack
-            --host --finding --findings --report --format --history
+            --host --finding --findings --doctor --report --format --history
             --lock-workspace --unlock-workspace
             --flow --secret --secrets --secret-clear --lint --sync --sync-remote
         " -- "$cur") )

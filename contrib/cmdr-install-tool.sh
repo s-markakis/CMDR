@@ -65,6 +65,14 @@ recipe_for() {
     ' "$RECIPES"
 }
 
+# note (col 6) for a binary, if any — shown as a post-install hint.
+note_for() {
+    awk -F '\t' -v b="$1" '
+        /^[[:space:]]*#/ {next} NF<6 {next}
+        $1==b { print $6; exit }
+    ' "$RECIPES"
+}
+
 # choose a method for a binary given its recipe fields; echoes "method<TAB>cmd"
 plan_method() {
     local bin="$1" brew_f="$2" go_m="$3" pipx_p="$4" apt_p="$5"
@@ -83,7 +91,10 @@ plan_method() {
 }
 
 # --- extract invoked binaries from a shell command string -----------------
-# splits on | ; && , strips sudo / command / env / VAR=val prefixes.
+# Splits on | ; && || and strips sudo / command / env / VAR=val / xargs[-flags]
+# prefixes, taking the first real command word of each segment.
+# LIMITATION: does not descend into $(...) / `...` command substitutions or a
+# `bash -c '...'` payload — a tool used only inside those is not detected.
 extract_bins() {
     printf '%s\n' "$1" | sed -e 's/&&/\n/g' -e 's/||/\n/g' | tr '|;' '\n\n' \
     | while IFS= read -r seg; do
@@ -93,6 +104,7 @@ extract_bins() {
             case "$1" in
                 sudo|command|env|time|nohup|exec) shift ;;
                 *=*) shift ;;
+                xargs) shift; while [ "$#" -gt 0 ]; do case "$1" in -*) shift ;; *) break ;; esac; done ;;
                 *) printf '%s\n' "$1"; break ;;
             esac
         done
@@ -217,6 +229,8 @@ for i in "${!TO_INSTALL_BIN[@]}"; do
         else
             say "  ${YELLOW}installed but '$bin' still not on PATH${NC} (check PATH / shell rehash)"
         fi
+        n="$(note_for "$bin")"
+        [ -n "$n" ] && say "  ${YELLOW}note:${NC} $n"
     else
         say "  ${RED}failed:${NC} $bin"; fails=$((fails+1))
     fi

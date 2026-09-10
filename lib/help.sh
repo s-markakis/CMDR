@@ -192,6 +192,21 @@ display_subcommand_help() {
             echo "  cmdr -r winrm @dc01"
             echo "  cmdr -r nmap --all-hosts"
             ;;
+        doctor)
+            echo "Usage: cmdr --doctor [tag]"
+            echo ""
+            echo "Report which external tools the stored commands invoke and which are"
+            echo "missing on this machine. With a tag, only that command; otherwise the"
+            echo "whole active-workspace store. Exits non-zero if anything is missing."
+            echo ""
+            echo "Pairs with contrib/cmdr-install-tool.sh, which installs a missing tool"
+            echo "(brew/go/pipx/apt by platform). --doctor prints the exact install line."
+            echo ""
+            echo "Examples:"
+            echo "  cmdr --doctor                 # health of every referenced tool"
+            echo "  cmdr --doctor recon-chain     # just the tools that one command needs"
+            echo "  cmdr --doctor --json          # machine-readable [{tool,present,path}]"
+            ;;
         finding)
             echo "Usage: cmdr --finding <severity> <host> \"title\" [--evidence path]"
             echo "       cmdr --findings            List findings"
@@ -301,6 +316,7 @@ display_help() {
     echo "  --outputs [tag]                    Show saved outputs"
     echo "  --finding <sev> <host> \"title\"     Record a finding"
     echo "  --findings                         List findings"
+    echo "  --doctor [tag]                     Report missing tools for stored commands"
     echo "  --report [file] [--format fmt]     Report (md/csv/html/pdf)"
     echo "  --history [n]                      Show recent run history"
     echo ""
