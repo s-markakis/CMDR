@@ -78,6 +78,11 @@ Ubuntu and macOS.
 
 ## Quick Start
 
+> **New here?** [docs/WORKFLOW.md](docs/WORKFLOW.md) is a task-oriented
+> walkthrough — from a fresh box to running recon against a host, covering
+> workspaces, `/etc/hosts` sync, tool health (`--doctor`), and installing
+> missing tools.
+
 ```bash
 # Add a command
 cmdr -a serve 'python3 -m http.server 8080' dev --desc 'Quick HTTP server'
