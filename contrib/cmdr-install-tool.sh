@@ -157,10 +157,19 @@ if [ "$MODE" = "list" ]; then
     exit 0
 fi
 
+# Read a newline list into WANT (bash 3.2 has no `mapfile`; macOS /bin/bash is 3.2).
+_read_into_want() {
+    WANT=()
+    local line
+    while IFS= read -r line; do
+        [ -n "$line" ] && WANT+=("$line")
+    done
+}
+
 case "$MODE" in
     for)  [ -n "$TAG" ] || { err "--for needs a <tag>"; exit 2; }
-          mapfile -t WANT < <(bins_for_tag "$TAG") ;;
-    all)  mapfile -t WANT < <(bins_all_missing) ;;
+          _read_into_want < <(bins_for_tag "$TAG") ;;
+    all)  _read_into_want < <(bins_all_missing) ;;
     args) [ "${#WANT[@]}" -gt 0 ] || { usage; exit 2; } ;;
 esac
 

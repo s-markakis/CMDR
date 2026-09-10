@@ -609,8 +609,10 @@ _etc_hosts_flush_dns() {
 # Rewrite this workspace's block in /etc/hosts from the host inventory.
 # `--clear` (or CMDR_ETC_CLEAR=true) removes the block instead.
 etc_hosts_sync() {
+    # Clear vs mirror is signalled by CMDR_ETC_CLEAR (set from `--clear` in the
+    # arg parser), not a positional — callers pass no arguments.
     local clear=false
-    { [ "${1:-}" = "--clear" ] || [ "${CMDR_ETC_CLEAR:-false}" = true ]; } && clear=true
+    [ "${CMDR_ETC_CLEAR:-false}" = true ] && clear=true
 
     local f begin end body="" outside
     f=$(_etc_hosts_file)
