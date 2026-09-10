@@ -145,6 +145,9 @@ install_commands() {
 
     log_event "INFO" "Installed $imported commands from: $input_file ($skipped skipped)"
     echo -e "${GREEN}Imported $imported commands${NC} ($skipped skipped)."
+
+    # Flag any external tools the imported commands need but this host lacks.
+    doctor_after_import "$validated_json"
 }
 
 # List available command packs from the packs/ directory.

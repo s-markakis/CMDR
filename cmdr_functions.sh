@@ -50,6 +50,8 @@ source "$CMDR_LIB_DIR/commands.sh"
 source "$CMDR_LIB_DIR/run.sh"
 # shellcheck source=lib/findings.sh
 source "$CMDR_LIB_DIR/findings.sh"
+# shellcheck source=lib/doctor.sh
+source "$CMDR_LIB_DIR/doctor.sh"
 # shellcheck source=lib/menu.sh
 source "$CMDR_LIB_DIR/menu.sh"
 # shellcheck source=lib/crypto.sh

@@ -78,6 +78,11 @@ Ubuntu and macOS.
 
 ## Quick Start
 
+> **New here?** [docs/WORKFLOW.md](docs/WORKFLOW.md) is a task-oriented
+> walkthrough — from a fresh box to running recon against a host, covering
+> workspaces, `/etc/hosts` sync, tool health (`--doctor`), and installing
+> missing tools.
+
 ```bash
 # Add a command
 cmdr -a serve 'python3 -m http.server 8080' dev --desc 'Quick HTTP server'
@@ -346,6 +351,78 @@ cmdr -r nmap --all-hosts        # run once per defined host
 cmdr -r linpeas --on dc01       # execute over SSH (uses user/port from the host)
 ```
 
+### /etc/hosts sync
+
+`--hostname` may carry several space-separated names (the first is canonical for
+`{RHOSTNAME}` and SSH). `cmdr --host sync-etc` mirrors every host that has a
+`--hostname` into a managed, per-workspace block in `/etc/hosts`:
+
+```bash
+cmdr --host add 10.129.51.189 --name snapped \
+     --hostname 'snapped.htb admin.snapped.htb' --etc   # add + write /etc/hosts
+cmdr --host sync-etc                                     # re-push the whole workspace
+cmdr --host sync-etc --clear                             # remove this workspace's block
+```
+
+```text
+# >>> cmdr:htb-box >>>
+# managed by 'cmdr --host sync-etc' — lines between the markers are overwritten
+10.129.51.189   snapped.htb admin.snapped.htb
+# <<< cmdr:htb-box <<<
+```
+
+The block is rewritten on every sync (no duplicates), lines outside it are left
+intact, and `sudo` is used only when `/etc/hosts` is not already writable *and*
+the content changed. A one-time `/etc/hosts.cmdr.bak` is kept, the macOS DNS
+cache is flushed after a change, and any hand-added entry for a managed name is
+reported and left alone. Set `$CMDR_ETC_HOSTS` to target a different file.
+
+For the classic muscle-memory flow, source `contrib/addhost.sh` (bash or zsh) —
+`install.sh` offers to wire it into your shell rc, or add it by hand:
+
+```bash
+. /path/to/CMDR/contrib/addhost.sh
+addhost $IP snapped.htb admin.snapped.htb    # -> cmdr --host add ... --etc
+synchosts                                    # -> cmdr --host sync-etc
+delhost snapped                              # -> cmdr --host rm snapped
+```
+
+If `cmdr` is not on your `PATH` (alias installs), set `CMDR_BIN=/path/to/cmdr.sh`
+before sourcing.
+
+## Installing a command's missing tool
+
+First, see what a command (or the whole store) needs and what's missing:
+
+```bash
+cmdr --doctor              # every referenced tool: ok / missing (exits non-zero if any missing)
+cmdr --doctor recon-chain  # just the tools one command needs
+cmdr --doctor --json       # [{tool, present, path}]
+```
+
+`cmdr --pack load` also prints a missing-tool summary right after importing.
+
+CMDR stores commands; it does not install their tools — a missing binary is a
+clean `exit 127` at run time (`bash: subfinder: command not found`).
+`contrib/cmdr-install-tool.sh` closes that gap: it maps a binary to an install
+recipe (`contrib/tool-recipes.tsv`) and installs it with the best method for
+your platform (macOS: `brew` > `go` > `pipx`; Linux: `apt` > `go` > `pipx`).
+
+Fail-closed: it prints a **plan** and installs nothing until you pass `-y` (or
+confirm). Unknown tools are reported, never guessed at.
+
+```bash
+contrib/cmdr-install-tool.sh --list           # show the recipe registry
+contrib/cmdr-install-tool.sh --for recon-chain # install the tools that one command needs
+contrib/cmdr-install-tool.sh --all-missing -n  # scan the whole store, dry-run the plan
+contrib/cmdr-install-tool.sh subfinder httpx -y  # install specific tools now
+```
+
+It reads the active workspace's store via `cmdr -s --json`, so `--for` /
+`--all-missing` reflect exactly what you have loaded. Add a row to
+`tool-recipes.tsv` to teach it a new tool. `go`-installed tools land in
+`$(go env GOPATH)/bin` — put that on your `PATH`.
+
 ## Output Capture → Chaining
 
 Pipe a command's stdout into a workspace env var, then use it in the next command —
@@ -554,9 +631,10 @@ Sync refuses to run when the data dir is the CMDR install directory — point
 
 | Flag | Usage | Description |
 |------|-------|-------------|
-| `--host add` | `cmdr --host add <ip> --name <n> [--hostname h] [--os o] [--user u] [--port p]` | Add/update a host |
-| `--host list` | `cmdr --host list` | List hosts |
+| `--host add` | `cmdr --host add <ip> --name <n> [--hostname 'h [h2..]'] [--os o] [--user u] [--port p] [--etc]` | Add/update a host (`--etc` also writes `/etc/hosts`) |
+| `--host list` | `cmdr --host list` | List hosts (marks which are in `/etc/hosts`) |
 | `--host rm` | `cmdr --host rm <name>` | Remove a host |
+| `--host sync-etc` | `cmdr --host sync-etc [--clear]` | Mirror workspace hosts into `/etc/hosts` (or remove the block) |
 
 ### Findings & History
 
@@ -564,6 +642,7 @@ Sync refuses to run when the data dir is the CMDR install directory — point
 |------|-------|-------------|
 | `--finding` | `cmdr --finding <sev> <host> "title" [--evidence path]` | Record a finding |
 | `--findings` | `cmdr --findings` | List findings |
+| `--doctor` | `cmdr --doctor [tag]` | Report which tools stored commands need and which are missing |
 | `--report` | `cmdr --report [file] [--format md\|csv\|html\|pdf]` | Render a report |
 | `--history` | `cmdr --history [n]` | Show recent run history |
 

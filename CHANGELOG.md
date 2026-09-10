@@ -4,6 +4,63 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`/etc/hosts` sync for the host model**: `cmdr --host sync-etc` mirrors every
+  workspace host that has a `--hostname` into a managed, per-workspace block in
+  `/etc/hosts` (`# >>> cmdr:<workspace> >>>` … `# <<< cmdr:<workspace> <<<`).
+  The block is rewritten wholesale on each run, so entries never duplicate or
+  accumulate; everything outside the block is preserved byte-for-byte.
+  `--host sync-etc --clear` removes the block; `--host rm` prints a hint.
+- **`--etc` on `cmdr --host add`**: adds the host and runs the sync in one step.
+- **`--hostname` accepts multiple names**: space-separated; the first is
+  canonical for `{RHOSTNAME}` / SSH, all of them are written to `/etc/hosts`.
+- Writing `/etc/hosts` escalates with `sudo` only when the file is not already
+  writable and only when the content actually changes, keeps a one-time
+  `/etc/hosts.cmdr.bak`, and flushes the DNS cache on macOS. Pre-existing
+  hand-added entries for a managed name are reported and left untouched.
+  `$CMDR_ETC_HOSTS` overrides the target path.
+- `cmdr --host list` marks which hosts are currently in `/etc/hosts`.
+- **`contrib/addhost.sh`**: POSIX `addhost` / `synchosts` / `delhost` shell
+  shims (source from bash or zsh) for the classic `addhost $IP box.htb` flow.
+  `install.sh` offers to enable them (opt-in prompt), alongside the existing
+  Linux (apt/dnf/yum/pacman) and macOS (brew) dependency handling.
+- **`contrib/cmdr-install-tool.sh` + `contrib/tool-recipes.tsv`**: install the
+  external tool a stored command needs when it's missing. Resolves a binary to
+  a per-platform recipe (macOS `brew` > `go` > `pipx`; Linux `apt` > `go` >
+  `pipx`) and installs it — fail-closed (prints a plan, installs only on `-y`
+  or confirm). Modes: named binaries, `--for <tag>` (tools used by one command,
+  parsed out of pipelines), `--all-missing` (scan the whole store), `--list`,
+  `--dry-run`. Reads the store via `cmdr -s --json`; extend by adding a TSV row.
+  Surfaces per-recipe notes (e.g. naabu/libpcap, masscan/root) after install.
+  `install.sh` now also exposes it on `PATH` (symlink/alias) so the tip runs.
+- **`cmdr --doctor [tag]`**: report which external tools the stored commands
+  invoke and which are missing on this host (whole store, or one command).
+  Exits non-zero when anything is missing, prints the exact `cmdr-install-tool`
+  line, and has a `--json` form (`[{tool, present, path}]`). Baseline
+  shell/coreutils/curl/jq are not reported. `cmdr --pack load` prints the same
+  missing-tool summary right after importing a pack.
+
+### Changed
+- **`--host sync-etc` on an empty inventory now clears the block**: removing the
+  last host with a `--hostname` and re-syncing tidies the managed `/etc/hosts`
+  block away, instead of leaving it stale (mirror semantics: nothing in →
+  nothing out). The `delhost` shim re-syncs after removal (`--keep-etc` opts out).
+- **CI shellcheck now covers `contrib/*.sh`**, and the test suite gains sections
+  for `--doctor`, `cmdr-install-tool` (plan logic), the `/etc/hosts` empty-clear
+  path, and the `addhost`/`delhost` shims (197 assertions, up from 167).
+
+### Fixed
+- **zsh completion no longer errors when sourced before `compinit`**:
+  `cmdr_completion.bash` loaded `bashcompinit` *after* its first `complete -F`
+  call, so a fresh zsh printed `command not found: complete` / `compdef`. It now
+  loads bashcompinit first and only registers when `complete`+`compdef` exist;
+  `install.sh` adds the `autoload -Uz compinit bashcompinit` line to a zsh rc.
+- **`cmdr-install-tool` / doctor tool extraction handles `xargs`**: a tool run as
+  `... | xargs -I{} <tool>` is now detected (the `xargs` flags are skipped). The
+  known limitation (no descent into `$(...)` / backticks / `bash -c`) is documented.
+
 ## [3.3.0]
 
 ### Added

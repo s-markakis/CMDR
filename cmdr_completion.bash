@@ -75,14 +75,17 @@ _cmdr_completions() {
     fi
 
     case "$prev" in
-        -r|-d|-e|-c)
+        -r|-d|-e|-c|--doctor)
             _cmdr_complete_tags
             return ;;
         --on|rm|del)
             _cmdr_complete_hosts
             return ;;
         --host)
-            COMPREPLY=( $(compgen -W "add list rm" -- "$cur") )
+            COMPREPLY=( $(compgen -W "add list rm sync-etc" -- "$cur") )
+            return ;;
+        sync-etc|sync-hosts)
+            COMPREPLY=( $(compgen -W "--clear" -- "$cur") )
             return ;;
         --flow)
             COMPREPLY=( $(compgen -W "run list import show" -- "$cur") )
@@ -180,11 +183,11 @@ _cmdr_completions() {
             -w -W -u -n -v -V -h
             --help --version --undo --dry-run --local --save
             --trust --untrust --pick --danger
-            --capture --on --all-hosts
+            --capture --on --all-hosts --etc --clear
             --desc --alias --env --env-clear
             --chain --playbook --playbooks
             --note --notes --outputs --pack
-            --host --finding --findings --report --format --history
+            --host --finding --findings --doctor --report --format --history
             --lock-workspace --unlock-workspace
             --flow --secret --secrets --secret-clear --lint --sync --sync-remote
         " -- "$cur") )
@@ -208,10 +211,15 @@ _cmdr_completions() {
     done
 }
 
-complete -F _cmdr_completions cmdr
-
-# Zsh support via bashcompinit
+# Under zsh, `complete` is a bashcompinit shim that itself needs `compinit`
+# (for `compdef`). Load bashcompinit here, but only register when both pieces
+# are in place — otherwise sourcing this file spews "command not found".
+# The installer adds `bashcompinit` to a zsh rc after its `compinit` line.
 if [ -n "$ZSH_VERSION" ]; then
-    autoload -Uz bashcompinit && bashcompinit
+    autoload -Uz bashcompinit 2>/dev/null && bashcompinit 2>/dev/null
+    if typeset -f compdef >/dev/null 2>&1 && typeset -f complete >/dev/null 2>&1; then
+        complete -F _cmdr_completions cmdr
+    fi
+elif command -v complete >/dev/null 2>&1; then
     complete -F _cmdr_completions cmdr
 fi

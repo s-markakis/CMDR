@@ -84,6 +84,94 @@ okc  "unknown-host"   1                           "$C" -r hs @nope
 okg  "host-rm"        "Host removed"              "$C" --host rm web01
 okc  "host-bad-sub"   1                           "$C" --host frobnicate
 
+section "ETC-HOSTS SYNC"
+newdata
+ETC="$CMDR_DATA_DIR/etc_hosts"
+printf '127.0.0.1\tlocalhost\n' > "$ETC"
+export CMDR_ETC_HOSTS="$ETC"
+okc  "etc-bad-ip"      1                           "$C" --host add 999.1.1.1 --name bad --hostname bad.htb
+okc  "etc-bad-name"    1                           "$C" --host add 10.0.0.1 --name bad --hostname 'bad name!'
+"$C" --host add 10.129.51.189 --name snapped --hostname 'snapped.htb admin.snapped.htb' >/dev/null 2>&1
+okg  "etc-sync"        "Synced 1 host"             "$C" --host sync-etc
+okg  "etc-line"        "10.129.51.189[[:space:]]+snapped.htb admin.snapped.htb"  cat "$ETC"
+okg  "etc-marker"      "cmdr:default"              cat "$ETC"
+okg  "etc-preserved"   "127.0.0.1"                 cat "$ETC"
+okg  "etc-idempotent"  "already current"          "$C" --host sync-etc
+okg  "etc-one-block"   "^1$"                       bash -c "grep -c '>>> cmdr:default >>>' '$ETC'"
+okg  "etc-list-mark"   "in /etc/hosts"            "$C" --host list
+"$C" --host add 10.10.10.9 --name dc --hostname dc.htb --etc >/dev/null 2>&1
+okg  "etc-add-etc"     "10.10.10.9[[:space:]]+dc.htb"  cat "$ETC"
+okg  "etc-two-block"   "^1$"                       bash -c "grep -c '>>> cmdr:default >>>' '$ETC'"
+printf '192.168.1.1\tmanual.htb\n' >> "$ETC"
+"$C" --host add 192.168.1.2 --name manual --hostname manual.htb >/dev/null 2>&1
+okg  "etc-collision"   "already in .* .kept as-is."  "$C" --host sync-etc
+okg  "etc-manual-kept" "192.168.1.1"               cat "$ETC"
+okg  "etc-clear"       "Removed the cmdr block"    "$C" --host sync-etc --clear
+okng "etc-clear-gone"  "cmdr:default"              cat "$ETC"
+okg  "etc-clear-keeps" "manual.htb"                cat "$ETC"
+okg  "etc-clear-again" "No cmdr block"             "$C" --host sync-etc --clear
+# removing the last hostnamed host and re-syncing tidies the block away
+newdata
+ETC2="$CMDR_DATA_DIR/etc_hosts2"; printf '127.0.0.1\tlocalhost\n' > "$ETC2"
+export CMDR_ETC_HOSTS="$ETC2"
+"$C" --host add 10.10.10.20 --name only --hostname only.htb --etc >/dev/null 2>&1
+okg  "etc-empty-clears" "Removed the cmdr block"    bash -c "CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' --host rm only >/dev/null; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' --host sync-etc"
+okng "etc-empty-gone"   "cmdr:default"              cat "$ETC2"
+unset CMDR_ETC_HOSTS
+
+section "DOCTOR (tool health)"
+newdata
+# git is present on all runners and (unlike jq/curl) not in doctor's baseline-ignore set
+"$C" -a d-ok 'git status' dev >/dev/null 2>&1
+# force-store a command whose tool is missing (add-time validation would else block it)
+bash -c "printf 'y\n' | CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' -a d-miss 'ghosttool123 --scan {T}' net" >/dev/null 2>&1
+bash -c "printf 'y\n' | CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' -a d-pipe 'git log | ghosttool456 -x' net" >/dev/null 2>&1
+okg  "doctor-present"   "git[[:space:]]+ok"         "$C" --doctor
+okg  "doctor-missing"   "ghosttool123[[:space:]]+missing" "$C" --doctor
+okc  "doctor-exit-miss" 1                           "$C" --doctor
+okg  "doctor-suggests"  "cmdr-install-tool"         "$C" --doctor
+okg  "doctor-tag"       "ghosttool123"              "$C" --doctor d-miss
+okc  "doctor-tag-exit"  1                           "$C" --doctor d-miss
+okg  "doctor-pipe-both" "ghosttool456"              "$C" --doctor d-pipe   # extracts tool after a pipe
+okg  "doctor-unknown"   "not found"                 "$C" --doctor nope
+okc  "doctor-unknown-x" 1                           "$C" --doctor nope
+okg  "doctor-json"      '"present"'                 "$C" --doctor --json
+# a store whose tools are all present/baseline exits 0
+newdata
+"$C" -a allok 'git status' dev >/dev/null 2>&1
+okc  "doctor-allpresent" 0                          "$C" --doctor
+
+section "INSTALL-TOOL (plan only, no installs)"
+newdata
+IT="$ROOT/contrib/cmdr-install-tool.sh"
+REC="$CMDR_DATA_DIR/recipes.tsv"
+# faketool has brew+apt recipes (installable on either CI runner); ghosttool has none
+printf 'faketool\tfaketool\t-\t-\tfaketool\ttest tool\n' > "$REC"
+bash -c "printf 'y\n' | CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' -a probe 'jq . | faketool --run | ghosttool -x' net" >/dev/null 2>&1
+okg  "it-list"         "faketool"                   bash "$IT" --list --recipes "$REC"
+okg  "it-present"      "already installed"          bash "$IT" jq -n --recipes "$REC"
+okg  "it-toinstall"    "to install"                 bash "$IT" faketool -n --recipes "$REC"
+okg  "it-unresolved"   "no recipe"                  bash "$IT" ghosttool -n --recipes "$REC"
+okc  "it-unres-exit"   1                            bash "$IT" ghosttool -n --recipes "$REC"
+okg  "it-dryrun-noop"  "dry-run"                    bash "$IT" faketool -n --recipes "$REC"
+# --for a tag buckets each of the pipeline's tools
+okg  "it-for-present"  "already installed"          bash "$IT" --for probe -n --recipes "$REC" --cmdr "$C"
+okg  "it-for-install"  "faketool"                   bash "$IT" --for probe -n --recipes "$REC" --cmdr "$C"
+okg  "it-for-unres"    "ghosttool"                  bash "$IT" --for probe -n --recipes "$REC" --cmdr "$C"
+okg  "it-all-missing"  "faketool"                   bash "$IT" --all-missing -n --recipes "$REC" --cmdr "$C"
+okc  "it-noargs-usage" 2                            bash "$IT"
+
+section "ADDHOST SHIM"
+newdata
+export CMDR_ETC_HOSTS="$CMDR_DATA_DIR/ah_hosts"; printf '127.0.0.1\tlocalhost\n' > "$CMDR_ETC_HOSTS"
+export CMDR_BIN="$C"
+okg  "shim-addhost"    "Added/Updated: 10.9.9.9 box.htb"  bash -c ". '$ROOT/contrib/addhost.sh'; CMDR_DATA_DIR='$CMDR_DATA_DIR' CMDR_ETC_HOSTS='$CMDR_ETC_HOSTS' CMDR_BIN='$C' addhost 10.9.9.9 box.htb admin.box.htb"
+okg  "shim-etc-write"  "10.9.9.9[[:space:]]+box.htb admin.box.htb"  cat "$CMDR_ETC_HOSTS"
+okg  "shim-delhost"    "Host removed"               bash -c ". '$ROOT/contrib/addhost.sh'; CMDR_DATA_DIR='$CMDR_DATA_DIR' CMDR_ETC_HOSTS='$CMDR_ETC_HOSTS' CMDR_BIN='$C' delhost box"
+okng "shim-etc-gone"   "box.htb"                    cat "$CMDR_ETC_HOSTS"
+okc  "shim-addhost-usage" 2                         bash -c ". '$ROOT/contrib/addhost.sh'; addhost 10.0.0.1"
+unset CMDR_ETC_HOSTS CMDR_BIN
+
 section "OUTPUT CAPTURE"
 newdata
 "$C" -a gt 'echo token=ABC123' net >/dev/null 2>&1

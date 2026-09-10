@@ -56,8 +56,10 @@ fi
 
 # Detect shell config file
 SHELL_RC=""
+IS_ZSH=0
 if [ -n "$ZSH_VERSION" ] || [ "$(basename "$SHELL")" = "zsh" ]; then
     SHELL_RC="$HOME/.zshrc"
+    IS_ZSH=1
 else
     SHELL_RC="$HOME/.bashrc"
 fi
@@ -98,6 +100,12 @@ if [ "$method" = "2" ]; then
     ln -sf "$SCRIPT_DIR/cmdr.sh" "$SYMLINK_PATH"
     echo -e "${GREEN}Symlink created: $SYMLINK_PATH -> $SCRIPT_DIR/cmdr.sh${NC}"
 
+    # Also expose the tool-installer helper so `cmdr --doctor`'s suggestion works.
+    if [ -f "$SCRIPT_DIR/contrib/cmdr-install-tool.sh" ]; then
+        ln -sf "$SCRIPT_DIR/contrib/cmdr-install-tool.sh" "$SYMLINK_DIR/cmdr-install-tool"
+        echo -e "${GREEN}Symlink created: $SYMLINK_DIR/cmdr-install-tool${NC}"
+    fi
+
     # Remove conflicting alias if present
     if grep -qF "alias cmdr=" "$SHELL_RC" 2>/dev/null; then
         tmp_rc=$(mktemp)
@@ -117,6 +125,12 @@ else
         echo "$ALIAS_LINE" >> "$SHELL_RC"
         echo -e "${GREEN}Added cmdr alias to $SHELL_RC${NC}"
     fi
+    # Expose the tool-installer helper too (so `cmdr --doctor`'s tip is runnable).
+    if [ -f "$SCRIPT_DIR/contrib/cmdr-install-tool.sh" ] \
+       && ! grep -qF "alias cmdr-install-tool=" "$SHELL_RC" 2>/dev/null; then
+        echo "alias cmdr-install-tool='$SCRIPT_DIR/contrib/cmdr-install-tool.sh'" >> "$SHELL_RC"
+        echo -e "${GREEN}Added cmdr-install-tool alias to $SHELL_RC${NC}"
+    fi
 fi
 
 # Set up tab completion
@@ -129,10 +143,33 @@ if [ -f "$COMPLETION_FILE" ]; then
         echo "" >> "$SHELL_RC"
         echo "# CMDR - Tab completion" >> "$SHELL_RC"
         echo "$export_line" >> "$SHELL_RC"
+        # zsh needs bashcompinit (after its own compinit) to provide `complete`.
+        if [ "$IS_ZSH" = 1 ] && ! grep -qF "bashcompinit" "$SHELL_RC" 2>/dev/null; then
+            echo "autoload -Uz compinit bashcompinit && compinit && bashcompinit" >> "$SHELL_RC"
+        fi
         echo "$source_line" >> "$SHELL_RC"
         echo -e "${GREEN}Tab completion enabled in $SHELL_RC${NC}"
     else
         echo -e "${GREEN}Tab completion already configured.${NC}"
+    fi
+fi
+
+# Optional: the addhost/synchosts/delhost shell shims (contrib/addhost.sh)
+ADDHOST_FILE="$SCRIPT_DIR/contrib/addhost.sh"
+if [ -f "$ADDHOST_FILE" ]; then
+    if grep -qF "contrib/addhost.sh" "$SHELL_RC" 2>/dev/null; then
+        echo -e "${GREEN}addhost shims already configured.${NC}"
+    else
+        echo ""
+        read -p "Enable the 'addhost'/'synchosts'/'delhost' shell shims? (y/N): " add_shims
+        if [ "$add_shims" = "y" ] || [ "$add_shims" = "Y" ]; then
+            {
+                echo ""
+                echo "# CMDR - addhost shims"
+                echo ". '$ADDHOST_FILE'"
+            } >> "$SHELL_RC"
+            echo -e "${GREEN}addhost shims enabled in $SHELL_RC${NC}"
+        fi
     fi
 fi
 
