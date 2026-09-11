@@ -35,7 +35,13 @@ run_command() {
     [ -z "$resolved" ] && resolved=$(resolve_fuzzy "$tag")
     if [ -z "$resolved" ]; then
         log_event "ERROR" "Command '$tag' not found"
-        echo -e "${RED}Error:${NC} Command '$tag' not found."
+        echo -e "${RED}Error:${NC} Command '$tag' not found." >&2
+        local _sugg; _sugg=$(_fuzzy_suggest "$tag")
+        if [ -n "$_sugg" ]; then
+            echo -e "       Did you mean: ${CYAN}${_sugg}${NC}" >&2
+        else
+            echo -e "       ${CYAN}cmdr -s${NC} lists commands, ${CYAN}cmdr --pick${NC} browses them." >&2
+        fi
         exit 1
     fi
     [ "$resolved" != "$tag" ] && echo -e "${CYAN}→ $resolved${NC}" >&2

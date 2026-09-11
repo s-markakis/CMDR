@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Required placeholders (`{VAR:?}`) now prompt on an interactive terminal**
+  instead of hard-failing. Running such a command from the CLI, the fzf picker,
+  or the `-I` menu asks for the value (pre-filling the last one used); it still
+  fails closed when there's no terminal to ask — a piped or scripted run — or
+  during a dry-run, so automation keeps failing fast.
+
+### Fixed
+- **Actionable error messages**: a missing required value now tells you how to
+  supply it (`cmdr <tag> <NAME>` or `cmdr --env NAME=<value>`), and an unknown
+  command suggests near matches (`Did you mean: …`) or points at `cmdr -s` /
+  `cmdr --pick`. Previously both just stated the error — unhelpful when a
+  command was launched from the picker.
+
 ## [3.4.0] - 2026-09-11
 
 ### Added

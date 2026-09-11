@@ -470,6 +470,7 @@ okg  "fuzzy-substring"   "echo nmap"           "$C" -n mapscan
 okg  "fuzzy-caseless"    "sqlmap -u 1.1.1.1"   "$C" -n SQLM
 okg  "fuzzy-hint-shown"  "sqlmap"              "$C" -n sqlm
 okc  "fuzzy-notfound"    1                     "$C" -n zzznope
+okg  "notfound-hint"     "cmdr --pick|cmdr -s" "$C" -n zzznope
 # exact wins over a longer sibling (no false ambiguity)
 "$C" -a run 'echo RUNEXACT' x >/dev/null 2>&1; "$C" -a running 'echo RUNLONG' x >/dev/null 2>&1
 okg  "exact-beats-fuzzy" "RUNEXACT"            "$C" -n run
@@ -477,6 +478,31 @@ okg  "exact-beats-fuzzy" "RUNEXACT"            "$C" -n run
 "$C" -a scana 'echo AAA' x >/dev/null 2>&1; "$C" -a scanb 'echo BBB' x >/dev/null 2>&1
 okc  "fuzzy-ambiguous"   1                     "$C" -n scan
 okng "fuzzy-amb-no-run"  "AAA|BBB"             "$C" -n scan
+okg  "ambiguous-suggests" "Did you mean.*scan" "$C" -n scan
+
+section "REQUIRED PLACEHOLDER GUIDANCE"
+newdata
+"$C" -a reqcmd 'echo need {DOMAIN:?}' net >/dev/null 2>&1
+# no terminal (suite stdin is /dev/null): fail closed, with an actionable hint
+okc  "req-noninteractive" 1                    "$C" -r reqcmd
+okg  "req-hint-arg"       "cmdr <tag>"          "$C" -r reqcmd
+okg  "req-hint-env"       "cmdr --env DOMAIN"   "$C" -r reqcmd
+okg  "req-dry-errors"     "Required value"      "$C" -n -r reqcmd
+okg  "req-arg-ok"         "need foo.com"        "$C" -n -r reqcmd foo.com
+# interactive terminal: prompt instead of erroring (pty; skipped without expect)
+if command -v expect >/dev/null 2>&1; then
+  EXP="$(td)/req.exp"
+  cat > "$EXP" <<EOF
+set timeout 8
+spawn env CMDR_DATA_DIR=$CMDR_DATA_DIR $C -r reqcmd
+expect { -re {value for DOMAIN.*required} {} timeout {exit 2} }
+send "example.com\r"
+expect { "need example.com" {exit 0} timeout {exit 3} }
+EOF
+  okc "req-interactive-prompt" 0 expect "$EXP"
+else
+  echo "  (expect not installed — interactive required-prompt test skipped)"
+fi
 
 section "AUTO {LHOST}/{LPORT}"
 newdata
