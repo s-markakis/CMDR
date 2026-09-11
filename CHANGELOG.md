@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-09-11
+
 ### Added
 - **Quick run by tag/alias/unique prefix**: `cmdr <tag> [args...]` runs a
   command directly (no `-r`). The name may be a unique prefix or substring —

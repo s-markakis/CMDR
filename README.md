@@ -1,6 +1,6 @@
 <div align="center">
 
-# CMDR v3.3
+# CMDR v3.4
 
 [![CI](https://github.com/SP1R4/CMDR/actions/workflows/ci.yml/badge.svg)](https://github.com/SP1R4/CMDR/actions/workflows/ci.yml) ![License](https://img.shields.io/github/license/SP1R4/CMDR?color=black) ![Top language](https://img.shields.io/github/languages/top/SP1R4/CMDR) ![Last commit](https://img.shields.io/github/last-commit/SP1R4/CMDR)
 
