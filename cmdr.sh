@@ -9,7 +9,7 @@
 # See `cmdr -h` for full usage or `cmdr <flag> --help` for per-command help.
 # ============================================================================
 
-CMDR_VERSION="3.3.0"
+CMDR_VERSION="3.4.0"
 
 # Resolve the script's install directory (follows symlinks)
 SOURCE="${BASH_SOURCE[0]}"
