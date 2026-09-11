@@ -352,3 +352,68 @@ search_commands() {
     log_event "INFO" "Search completed for '$keyword'"
 }
 
+
+# Scaffold project-local commands by autodetecting the toolchain, so a repo is
+# `cmdr test`-ready without hand-writing .cmdr.json. Merges non-destructively
+# (existing tags win, first detected toolchain wins on collisions) and trusts
+# the file so the commands are immediately runnable. `cmdr init`.
+init_project() {
+    local file="$LOCAL_COMMANDS_FILE"
+    [ -f "$file" ] || echo "{}" > "$file"
+    if ! jq -e . "$file" >/dev/null 2>&1; then
+        echo -e "${RED}Error:${NC} Existing .cmdr.json is not valid JSON — fix or remove it first."
+        exit 1
+    fi
+    local added=0
+
+    _init_add() {   # tag command description
+        local t="$1" c="$2" d="$3"
+        jq -e --arg t "$t" 'has($t)' "$file" >/dev/null 2>&1 && return 0
+        local tmp_file
+        tmp_file=$(_mktemp_beside "$file")
+        jq --arg t "$t" --arg c "$c" --arg d "$d" \
+           '. + {($t): {command:$c, category:"project", description:$d}}' "$file" > "$tmp_file" \
+           && mv "$tmp_file" "$file"
+        printf "  ${GREEN}+${NC} %-8s ${CYAN}%s${NC}\n" "$t" "$c"
+        added=$((added + 1))
+    }
+
+    echo -e "${BOLD}${YELLOW}Detecting project commands in $(pwd):${NC}"
+    if [ -f package.json ]; then
+        _init_add build "npm run build" "Build (npm)"
+        _init_add test  "npm test"      "Test (npm)"
+        _init_add run   "npm start"     "Run (npm)"
+        _init_add dev   "npm run dev"   "Dev server (npm)"
+        _init_add lint  "npm run lint"  "Lint (npm)"
+    fi
+    if [ -f Cargo.toml ]; then
+        _init_add build "cargo build"   "Build (cargo)"
+        _init_add test  "cargo test"    "Test (cargo)"
+        _init_add run   "cargo run"     "Run (cargo)"
+        _init_add lint  "cargo clippy"  "Lint (cargo)"
+    fi
+    if [ -f go.mod ]; then
+        _init_add build "go build ./..." "Build (go)"
+        _init_add test  "go test ./..."  "Test (go)"
+        _init_add run   "go run ."       "Run (go)"
+        _init_add lint  "go vet ./..."   "Vet (go)"
+    fi
+    if [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ]; then
+        _init_add test "pytest"       "Test (pytest)"
+        _init_add lint "ruff check ." "Lint (ruff)"
+    fi
+    if [ -f Makefile ] || [ -f makefile ]; then
+        _init_add build "make"      "Build (make)"
+        _init_add test  "make test" "Test (make)"
+    fi
+
+    if [ "$added" -eq 0 ]; then
+        echo -e "${YELLOW}No new commands added${NC} (unknown project type, or all already present)."
+        return 0
+    fi
+    _retrust_local
+    log_event "INFO" "init_project added $added local command(s) in $(pwd)"
+    echo ""
+    echo -e "${GREEN}Wrote $added command(s) to${NC} $file ${GREEN}and trusted it.${NC}"
+    echo -e "Run them with e.g. ${CYAN}cmdr test${NC} or ${CYAN}cmdr build${NC}."
+}

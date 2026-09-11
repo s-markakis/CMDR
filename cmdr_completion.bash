@@ -182,7 +182,7 @@ _cmdr_completions() {
             -a -e -d -s -r -f -c -x -l -i -m -p
             -w -W -u -n -v -V -h
             --help --version --undo --dry-run --local --save
-            --trust --untrust --pick --danger
+            --trust --untrust --pick --danger --ps1
             --capture --on --all-hosts --etc --clear
             --desc --alias --env --env-clear
             --chain --playbook --playbooks
@@ -207,8 +207,23 @@ _cmdr_completions() {
                     _cmdr_complete_tags
                 fi
                 return ;;
+            out|t|target|init)
+                # These take at most one positional; nothing further to complete.
+                return ;;
         esac
     done
+
+    # First bare word: offer the speed-helper subcommands plus tags/aliases, so
+    # `cmdr <TAB>` completes both `cmdr init`/`out`/`t` and a command to run.
+    if [ "$COMP_CWORD" -eq 1 ] && [[ "$cur" != -* ]]; then
+        local subs="out t target init" tags="" aliases=""
+        if [ -f "$commands_file" ]; then
+            tags=$(jq -r 'keys[]' "$commands_file" 2>/dev/null)
+            aliases=$(jq -r '[.[] | .aliases // [] | .[]] | .[]' "$commands_file" 2>/dev/null)
+        fi
+        COMPREPLY=( $(compgen -W "$subs $tags $aliases" -- "$cur") )
+        return
+    fi
 }
 
 # Under zsh, `complete` is a bashcompinit shim that itself needs `compinit`

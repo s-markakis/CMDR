@@ -135,6 +135,34 @@ resolve_tag_or_alias() {
     return 1
 }
 
+# Fuzzy tag resolution for `cmdr <partial>` / `cmdr -r <partial>`: try a unique
+# prefix match on tags+aliases, then a unique substring match (both
+# case-insensitive). Returns the single matching tag, or non-zero if there is
+# no unique match (caller reports "not found"). Pure lookup — no prompting.
+resolve_fuzzy() {
+    local input="$1" effective cands n
+    effective=$(get_effective_commands)
+
+    _fz_match() {   # $1 = jq predicate over the lowercased candidate string $c
+        echo "$effective" | jq -r --arg q "$(printf '%s' "$input" | tr '[:upper:]' '[:lower:]')" "
+            to_entries[] | .key as \$k
+            | ([\$k] + (.value.aliases // []))
+            | map(ascii_downcase) as \$cs
+            | select(any(\$cs[]; $1))
+            | \$k" 2>/dev/null | sort -u
+    }
+
+    cands=$(_fz_match 'startswith($q)')
+    n=$(printf '%s' "$cands" | grep -c .)
+    if [ "$n" -eq 0 ]; then
+        cands=$(_fz_match 'index($q) != null')
+        n=$(printf '%s' "$cands" | grep -c .)
+    fi
+
+    [ "$n" -eq 1 ] && { printf '%s' "$cands"; return 0; }
+    return 1
+}
+
 # Substitute {KEY} placeholders with values from the workspace environment.
 # Only exact case matches are replaced.
 resolve_env_vars() {
@@ -147,6 +175,50 @@ resolve_env_vars() {
         cmd="${cmd//\{$key\}/$value}"
     done < <(jq -r 'to_entries[] | "\(.key)\t\(.value)"' "$ENV_FILE" 2>/dev/null)
     echo "$cmd"
+}
+
+# --- Placeholder memory: remember the last value entered for each {NAME} and
+# offer it as the prompt default next time, so repeat targets/ports/args don't
+# get retyped. Per-workspace; only prompted values are stored.
+_placeholder_get() {
+    [ -f "$PLACEHOLDER_FILE" ] || return 0
+    jq -r --arg k "$1" '.[$k] // empty' "$PLACEHOLDER_FILE" 2>/dev/null
+}
+_placeholder_set_kv() {
+    local key="$1" val="$2"
+    [ -z "$val" ] && return 0
+    [ ! -f "$PLACEHOLDER_FILE" ] && echo "{}" > "$PLACEHOLDER_FILE"
+    local tmp_file
+    tmp_file=$(_mktemp_beside "$PLACEHOLDER_FILE")
+    jq --arg k "$key" --arg v "$val" '. + {($k): $v}' "$PLACEHOLDER_FILE" > "$tmp_file" \
+        && mv "$tmp_file" "$PLACEHOLDER_FILE"
+}
+
+# Source IP of the VPN/attack interface, for auto-filling {LHOST}. Prefers
+# $CMDR_IFACE (default tun0 — HTB/OpenVPN); falls back to the default-route
+# source address. Empty when nothing is found (caller then prompts).
+_detect_vpn_ip() {
+    local iface="${CMDR_IFACE:-tun0}" ip=""
+    if command -v ip >/dev/null 2>&1; then
+        ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+        [ -z "$ip" ] && ip=$(ip route get 1.1.1.1 2>/dev/null | grep -oE 'src [0-9.]+' | awk '{print $2}' | head -1)
+    elif command -v ifconfig >/dev/null 2>&1; then
+        ip=$(ifconfig "$iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+        [ -z "$ip" ] && ip=$(ifconfig 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' \
+                             | grep -v '^127\.' | head -1)
+    fi
+    [ -n "$ip" ] && printf '%s' "$ip"
+}
+
+# Auto-value for well-known CTF placeholders, so reverse-shell / payload
+# commands are ready without lookups. Returns non-zero for unknown names.
+#   {LHOST}/{LOCAL_IP} -> VPN interface IP        {LPORT} -> $CMDR_LPORT or 4444
+_auto_placeholder() {
+    case "$1" in
+        LHOST|LOCAL_IP) _detect_vpn_ip ;;
+        LPORT)          printf '%s' "${CMDR_LPORT:-4444}" ;;
+        *)              return 1 ;;
+    esac
 }
 
 # Full command resolution pipeline. Placeholder forms, resolved left-to-right:
@@ -190,7 +262,7 @@ resolve_command() {
         fi
 
         # Prefer an env value (covers the modifier forms, which step 1 skips).
-        local value="" envval=""
+        local value="" envval="" autoval=""
         if [ -f "$ENV_FILE" ]; then
             envval=$(jq -r --arg k "$name" '.[$k] // empty' "$ENV_FILE" 2>/dev/null)
         fi
@@ -204,11 +276,23 @@ resolve_command() {
         elif [ "$mod" = "required" ]; then
             echo -e "${RED}Error:${NC} Required value '{$name}' not provided." >&2
             return 1
+        elif autoval=$(_auto_placeholder "$name") && [ -n "$autoval" ]; then
+            # Well-known placeholder (e.g. {LHOST}/{LPORT}) filled automatically.
+            value="$autoval"
         elif [ "$DRY_RUN" = true ]; then
             # Never block on a prompt during a dry run; show the gap instead.
             value="<$name>"
         else
-            read -p "Enter value for $name: " value
+            # Prompt, pre-filling the last value used for this placeholder so a
+            # bare Enter reuses it.
+            local _last; _last=$(_placeholder_get "$name")
+            if [ -n "$_last" ]; then
+                read -p "Enter value for $name [$_last]: " value
+                [ -z "$value" ] && value="$_last"
+            else
+                read -p "Enter value for $name: " value
+            fi
+            with_store_lock _placeholder_set_kv "$name" "$value"
         fi
 
         # Replace every occurrence of this exact token in one shot.

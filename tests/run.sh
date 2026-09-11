@@ -444,6 +444,33 @@ for i in 1 2 3 4 5 6; do ( "$C" -r ping1 >/dev/null 2>&1 ) & done; wait
 HN=$(jq 'length' "$CMDR_DATA_DIR/.cmdr_history.json" 2>/dev/null)
 if [ "$HN" = "6" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); FAILED+=("run-path lock (only $HN/6 history entries)"); fi
 
+section "SPEED HELPERS (fuzzy, target, out, auto-ph, memory, init)"
+newdata
+okg  "target-set"      "TARGET. = 10.10.11.5"        "$C" t 10.10.11.5
+okg  "target-show"     "10.10.11.5"                  "$C" t
+okg  "ps1-segment"     "\[cmdr:default"              "$C" --ps1
+# fuzzy prefix run (bare word + -r), exact still wins, ambiguous fails safe
+"$C" -a sqlmap 'sqlmap -u {TARGET}' web >/dev/null 2>&1
+okg  "fuzzy-prefix"    "sqlmap -u 10.10.11.5"        "$C" -n sqlm
+okg  "bare-word-run"   "sqlmap -u 10.10.11.5"        "$C" -n sqlmap
+"$C" -a scana 'echo A' x >/dev/null 2>&1; "$C" -a scanb 'echo B' x >/dev/null 2>&1
+okc  "fuzzy-ambiguous" 1                             "$C" -n scan
+# auto {LHOST}/{LPORT}: LPORT is deterministic; LHOST detection is host-specific
+"$C" -a rev 'nc {LHOST} {LPORT}' shells >/dev/null 2>&1
+okg  "auto-lport-run"  "nc .* 9001"                  env CMDR_LPORT=9001 "$C" -n rev
+# placeholder memory: prompted value is stored for reuse
+"$C" -a greet 'echo hi {WHO}' x >/dev/null 2>&1
+printf 'zoe\n' | CMDR_DATA_DIR="$CMDR_DATA_DIR" "$C" greet >/dev/null 2>&1
+okg  "ph-memory-store" "zoe"                         cat "$CMDR_DATA_DIR/.cmdr_placeholders.json"
+# out: last output recorded and greppable
+okg  "out-last"        "hi zoe"                      "$C" out
+okg  "out-grep"        "hi zoe"                      "$C" out zoe
+okg  "out-empty-newdata" "No recorded output"        bash -c "CMDR_DATA_DIR=\"$(td)\" '$C' out"
+# init: autodetect + trusted local file
+PROJ="$(td)"; echo '{}' > "$PROJ/package.json"
+okg  "init-detects"    "npm test"                    bash -c "cd '$PROJ'; CMDR_DATA_DIR=\"$CMDR_DATA_DIR\" '$C' init"
+okg  "init-runs-local" "npm test"                    bash -c "cd '$PROJ'; CMDR_DATA_DIR=\"$CMDR_DATA_DIR\" '$C' -n test"
+
 section "BATS (optional)"
 if command -v bats >/dev/null 2>&1; then
   if bats "$ROOT/tests/cmdr.bats" >/dev/null 2>&1; then

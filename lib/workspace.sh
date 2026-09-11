@@ -155,3 +155,33 @@ clear_env_var() {
     echo -e "${GREEN}Cleared:${NC} $key"
 }
 
+
+# Fast target setter: `cmdr t 10.10.11.5` sets {TARGET} for the whole workspace
+# (used by host-less commands and templates). With no arg, prints the current
+# target. This is the one value you retype most in a CTF, made one keystroke.
+set_target() {
+    local ip="$1"
+    if [ -z "$ip" ]; then
+        local cur=""
+        [ -f "$ENV_FILE" ] && cur=$(jq -r '.TARGET // empty' "$ENV_FILE" 2>/dev/null)
+        if [ -n "$cur" ]; then echo -e "${CYAN}TARGET${NC} = $cur"
+        else echo -e "${YELLOW}No target set.${NC} Set one with 'cmdr t <ip|host>'."; fi
+        return 0
+    fi
+    with_store_lock _env_set_kv TARGET "$ip"
+    log_event "INFO" "Target set: $ip"
+    echo -e "${GREEN}Target set:${NC} {TARGET} = $ip"
+}
+
+# Compact prompt segment for PS1 embedding: workspace and current target.
+# Plain text (no color/newline) so the caller can wrap it. Fast + quiet.
+#   PS1='$(cmdr --ps1) \$ '
+ps1_segment() {
+    local tgt=""
+    [ -f "$ENV_FILE" ] && tgt=$(jq -r '.TARGET // empty' "$ENV_FILE" 2>/dev/null)
+    if [ -n "$tgt" ]; then
+        printf '[cmdr:%s→%s]' "$ACTIVE_WORKSPACE" "$tgt"
+    else
+        printf '[cmdr:%s]' "$ACTIVE_WORKSPACE"
+    fi
+}
