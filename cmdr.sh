@@ -69,6 +69,8 @@ FINDINGS_FILE="$ACTIVE_DATA_DIR/.cmdr_findings.json"
 HISTORY_FILE="$ACTIVE_DATA_DIR/.cmdr_history.json"
 WORKFLOWS_FILE="$ACTIVE_DATA_DIR/.cmdr_workflows.json"
 SECRETS_FILE="$ACTIVE_DATA_DIR/.cmdr_secrets.json"
+PLACEHOLDER_FILE="$ACTIVE_DATA_DIR/.cmdr_placeholders.json"
+LAST_OUTPUT_FILE="$ACTIVE_DATA_DIR/.cmdr_last_output"
 HISTORY_MAX=200
 OUTPUTS_DIR="$ACTIVE_DATA_DIR/outputs"
 LOCAL_COMMANDS_FILE="$(pwd)/.cmdr.json"
@@ -563,6 +565,23 @@ main() {
                 ;;
             --trust)        action="trust_local"; shift ;;
             --untrust)      action="untrust_local"; shift ;;
+
+            # --- Speed helpers ---
+            out)
+                action="last_output"; shift
+                [ "${1:-}" = "--help" ] && { display_subcommand_help "out"; exit 0; }
+                [ "$#" -ge 1 ] && [[ "${1:-}" != -* ]] && action_args+=("$1") && shift
+                ;;
+            t|target)
+                action="set_target"; shift
+                [ "${1:-}" = "--help" ] && { display_subcommand_help "target"; exit 0; }
+                [ "$#" -ge 1 ] && [[ "${1:-}" != -* ]] && action_args+=("$1") && shift
+                ;;
+            init)
+                action="init"; shift
+                [ "${1:-}" = "--help" ] && { display_subcommand_help "init"; exit 0; }
+                ;;
+            --ps1)          action="ps1"; shift ;;
             -u|--undo)      action="undo"; shift ;;
             -h|--help)      action="help"; shift ;;
             -V|--version)   echo "CMDR v${CMDR_VERSION}"; exit 0 ;;
@@ -571,16 +590,36 @@ main() {
             -v|-n|--dry-run|--local|--save|--json) shift ;;
 
             *)
-                log_event "ERROR" "Invalid option: $1"
-                echo -e "${RED}Invalid option: $1${NC}" 1>&2
-                exit 1
+                # A bare word (not a flag) is a run target: `cmdr sqlm 10.0.0.1`
+                # runs the command whose tag/alias matches (exact, else prefix,
+                # else substring — see resolve_fuzzy). Remaining args feed its
+                # placeholders, mirroring `-r`.
+                if [[ "$1" != -* ]]; then
+                    action="run"
+                    action_args+=("$1"); shift
+                    while [ "$#" -gt 0 ]; do
+                        case "$1" in
+                            --)          shift; while [ "$#" -gt 0 ]; do action_args+=("$1"); shift; done; break ;;
+                            --capture)   shift; [ "$#" -ge 1 ] && CMDR_CAPTURE="$1" && shift ;;
+                            --on)        shift; [ "$#" -ge 1 ] && CMDR_ON="$1" && shift ;;
+                            --all-hosts) CMDR_ALL_HOSTS=true; shift ;;
+                            -v|-n|--dry-run|--local|--save) shift ;;
+                            -*)          break ;;
+                            *)           action_args+=("$1"); shift ;;
+                        esac
+                    done
+                else
+                    log_event "ERROR" "Invalid option: $1"
+                    echo -e "${RED}Invalid option: $1${NC}" 1>&2
+                    exit 1
+                fi
                 ;;
         esac
     done
 
     # ----- Lock only mutating actions, for the duration of the write -----
     case "$action" in
-        add|edit|delete|set_env|clear_env|create_playbook|add_note|install|load_pack|undo|switch_workspace|trust_local|untrust_local|host_add|host_rm|host_sync_etc|add_finding|lock_workspace|unlock_workspace|flow_import|set_secret|clear_secret|import_ext)
+        add|edit|delete|set_env|clear_env|create_playbook|add_note|install|load_pack|undo|switch_workspace|trust_local|untrust_local|host_add|host_rm|host_sync_etc|add_finding|lock_workspace|unlock_workspace|flow_import|set_secret|clear_secret|import_ext|set_target|init)
             acquire_lock ;;
     esac
 
@@ -664,6 +703,12 @@ main() {
         # Trust
         trust_local)      trust_local ;;
         untrust_local)    untrust_local ;;
+
+        # Speed helpers
+        last_output)      show_last_output "${action_args[0]:-}" ;;
+        set_target)       set_target "${action_args[0]:-}" ;;
+        init)             init_project ;;
+        ps1)              ps1_segment ;;
 
         # General
         interactive)      interactive_mode ;;

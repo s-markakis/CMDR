@@ -31,11 +31,14 @@ run_command() {
 
     local resolved
     resolved=$(resolve_tag_or_alias "$tag")
+    # Fall back to a unique prefix/substring match so `cmdr sqlm` finds sqlmap.
+    [ -z "$resolved" ] && resolved=$(resolve_fuzzy "$tag")
     if [ -z "$resolved" ]; then
         log_event "ERROR" "Command '$tag' not found"
         echo -e "${RED}Error:${NC} Command '$tag' not found."
         exit 1
     fi
+    [ "$resolved" != "$tag" ] && echo -e "${CYAN}→ $resolved${NC}" >&2
     tag="$resolved"
 
     local effective
@@ -145,6 +148,7 @@ _run_one() {
         output=$(bash -c "$exec_cmd")
         status=$?
         printf '%s\n' "$output"
+        [ "${CMDR_RECORD:-true}" = true ] && printf '%s\n' "$output" > "$LAST_OUTPUT_FILE" 2>/dev/null
         if [ "$SAVE_OUTPUT" = true ]; then
             mkdir -p "$OUTPUTS_DIR"
             output_file="$OUTPUTS_DIR/${tag}_$(date +%Y%m%d_%H%M%S).log"
@@ -155,6 +159,14 @@ _run_one() {
         mkdir -p "$OUTPUTS_DIR"
         output_file="$OUTPUTS_DIR/${tag}_$(date +%Y%m%d_%H%M%S).log"
         bash -c "$exec_cmd" 2>&1 | tee "$output_file"
+        status=${PIPESTATUS[0]}
+        [ "${CMDR_RECORD:-true}" = true ] && cp "$output_file" "$LAST_OUTPUT_FILE" 2>/dev/null
+    elif [ "${CMDR_RECORD:-true}" = true ]; then
+        # Record combined output to the rolling last-output file while still
+        # streaming to the terminal, so `cmdr out` can re-read/grep it without a
+        # re-run. Line-based interactivity (stdin) is preserved; set
+        # CMDR_RECORD=0 for full-screen/curses programs whose stdout needs a tty.
+        bash -c "$exec_cmd" 2>&1 | tee "$LAST_OUTPUT_FILE"
         status=${PIPESTATUS[0]}
     else
         bash -c "$exec_cmd"
@@ -759,3 +771,19 @@ rerun_last() {
     fi
 }
 
+
+# Show the most recent run's recorded output (see CMDR_RECORD in _run_one), or
+# grep it when a pattern is given — so a scan result can be re-read without a
+# re-run. `cmdr out` / `cmdr out <pattern>`.
+show_last_output() {
+    local pat="$1"
+    if [ ! -f "$LAST_OUTPUT_FILE" ] || [ ! -s "$LAST_OUTPUT_FILE" ]; then
+        echo -e "${YELLOW}No recorded output yet.${NC} Run a command first (recording is on unless CMDR_RECORD=0)."
+        return 0
+    fi
+    if [ -n "$pat" ]; then
+        grep -iE --color=auto -- "$pat" "$LAST_OUTPUT_FILE"
+    else
+        cat "$LAST_OUTPUT_FILE"
+    fi
+}

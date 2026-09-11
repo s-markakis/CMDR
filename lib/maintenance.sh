@@ -122,7 +122,7 @@ sync_data() {
     ( cd "$DATA_DIR" || exit 1
       [ -d .git ] || { git init -q; echo -e "${GREEN}Initialized git repo in $DATA_DIR${NC}"; }
       # Keep rebuildable caches and scratch files out of the synced history.
-      for pat in '.cmdr_index.db' '**/.cmdr_index.db' '.cmdr.tmp.*' '**/.cmdr.tmp.*'; do
+      for pat in '.cmdr_index.db' '**/.cmdr_index.db' '.cmdr.tmp.*' '**/.cmdr.tmp.*' '.cmdr_last_output' '**/.cmdr_last_output'; do
           grep -qxF "$pat" .gitignore 2>/dev/null || echo "$pat" >> .gitignore
       done
       git add -A

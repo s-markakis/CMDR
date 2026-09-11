@@ -197,60 +197,10 @@ load_pack() {
 # Menu-driven interface for browsing and running commands.
 # ----------------------------------------------------------------------------
 
+# `cmdr interactive` now enters the same hub as `cmdr -I` / `--menu`, so there
+# is one interactive front-end (plus the fzf/bash picker) instead of three
+# overlapping ones. The legacy category-browser was folded into interactive_menu.
 interactive_mode() {
-    log_event "INFO" "Entered interactive mode"
-    notify_untrusted_local
-    echo -e "${BOLD}${YELLOW}CMDR Interactive Mode${NC} (select 'exit' to quit)"
-    if [ "$ACTIVE_WORKSPACE" != "default" ]; then
-        echo -e "${CYAN}Workspace: $ACTIVE_WORKSPACE${NC}"
-    fi
-
-    while true; do
-        local effective
-        effective=$(get_effective_commands)
-        local cat_array=()
-        while IFS= read -r _c; do cat_array+=("$_c"); done \
-            < <(echo "$effective" | jq -r '[to_entries[] | .value.category] | unique[]' 2>/dev/null)
-        if [ "${#cat_array[@]}" -eq 0 ]; then
-            echo -e "${YELLOW}No commands available.${NC}"
-            return 0
-        fi
-
-        echo -e "\n${GREEN}Categories:${NC}"
-        select category in "${cat_array[@]}" "exit"; do
-            if [ "$category" = "exit" ]; then
-                log_event "INFO" "Exited interactive mode"
-                echo -e "${GREEN}Bye.${NC}"
-                return 0
-            fi
-            if [ -n "$category" ]; then
-                echo -e "\n${GREEN}Commands in '$category':${NC}"
-                local cmd_array=()
-                while IFS= read -r _k; do cmd_array+=("$_k"); done \
-                    < <(echo "$effective" | jq -r --arg cat "$category" \
-                        'to_entries[] | select(.value.category == $cat) | .key')
-                if [ "${#cmd_array[@]}" -eq 0 ]; then
-                    echo -e "${YELLOW}No commands in '$category'.${NC}"
-                    break
-                fi
-                select tag in "${cmd_array[@]}" "back"; do
-                    if [ "$tag" = "back" ]; then
-                        break
-                    fi
-                    if [ -n "$tag" ]; then
-                        local cmd
-                        cmd=$(echo "$effective" | jq -r --arg tag "$tag" '.[$tag].command')
-                        echo -e "${YELLOW}Command:${NC} $cmd"
-                        read -p "Run this command? (y/N): " choice
-                        if [ "$choice" = "y" ] || [ "$choice" = "Y" ]; then
-                            run_command "$tag"
-                        fi
-                    fi
-                    break
-                done
-            fi
-            break
-        done
-    done
+    interactive_menu
 }
 

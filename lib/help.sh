@@ -58,6 +58,10 @@ display_subcommand_help() {
             echo "Run a stored command. Extra args fill {placeholder} parameters."
             echo "Environment variables ({KEY}) are substituted first."
             echo "Placeholder forms: {VAR}, {VAR:=default}, {VAR:?} (required)."
+            echo "{LHOST}/{LPORT} auto-fill from your VPN interface (\$CMDR_IFACE,"
+            echo "default tun0) and \$CMDR_LPORT (default 4444). Prompts pre-fill the"
+            echo "last value you entered for that placeholder."
+            echo "The tag may be a unique prefix/substring: 'cmdr sqlm' -> sqlmap."
             echo "Use '!' or 'last' to re-run the most recent command."
             echo ""
             echo "  --save           Save output to outputs/ directory"
@@ -252,6 +256,35 @@ display_subcommand_help() {
             echo "  cmdr --secret DBPASS pass:work/db"
             echo "  cmdr -a psql 'psql -h {TARGET} -U admin' db   # PGPASSWORD via {PGPASSWORD}"
             ;;
+        out)
+            echo "Usage: cmdr out [pattern]"
+            echo ""
+            echo "Show the last run's recorded output, or grep it with a pattern —"
+            echo "re-read a scan result without re-running it. Recording is on by"
+            echo "default; set CMDR_RECORD=0 to skip it (e.g. for full-screen tools)."
+            echo ""
+            echo "Examples:"
+            echo "  cmdr out"
+            echo "  cmdr out 'open|22/tcp'"
+            ;;
+        target)
+            echo "Usage: cmdr t|target [ip|host]"
+            echo ""
+            echo "Set {TARGET} for the whole workspace in one keystroke; with no"
+            echo "argument, print the current target."
+            echo ""
+            echo "Examples:"
+            echo "  cmdr t 10.10.11.5"
+            echo "  cmdr target"
+            ;;
+        init)
+            echo "Usage: cmdr init"
+            echo ""
+            echo "Autodetect the project toolchain (npm/cargo/go/python/make) and"
+            echo "scaffold build/test/run/lint commands into a trusted .cmdr.json,"
+            echo "so the repo is 'cmdr test'-ready. Non-destructive: existing tags"
+            echo "are kept."
+            ;;
     esac
 }
 
@@ -278,6 +311,13 @@ display_help() {
     echo "  -c <tag> [args...]                             Copy command to clipboard"
     echo "  --pick                                         Fuzzy-pick a command (fzf)"
     echo "  -I, --menu                                     Interactive tick-menu (fzf multi-select; bash fallback)"
+    echo "  <tag> [args...]                                Run by tag/alias/unique prefix (bare word)"
+    echo ""
+    echo -e "${YELLOW}Speed Helpers:${NC}"
+    echo "  t | target [ip]        Set / show {TARGET} for the workspace"
+    echo "  out [pattern]          Show (or grep) the last run's output"
+    echo "  init                   Scaffold .cmdr.json for the current project"
+    echo "  --ps1                  Print a compact prompt segment (workspace/target)"
     echo ""
     echo -e "${YELLOW}Run Options (with -r):${NC}"
     echo "  --save                 Save output to outputs/"

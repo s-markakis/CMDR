@@ -20,6 +20,12 @@ variables, playbooks, output capture, findings, and extensible command packs.
 | Feature | Description |
 |---------|-------------|
 | **Command Management** | Store, tag, search, alias, and run commands instantly |
+| **Quick Run** | `cmdr <tag>` runs by tag/alias or a unique prefix/substring (`cmdr sqlm` → sqlmap) |
+| **Placeholder Memory** | Prompts pre-fill the last value used for each `{VAR}` — bare Enter reuses it |
+| **Auto `{LHOST}`/`{LPORT}`** | Filled from your VPN interface (`$CMDR_IFACE`, default `tun0`) and `$CMDR_LPORT` (default 4444) |
+| **Quick Target** | `cmdr t 10.10.11.5` sets `{TARGET}` for the workspace; `cmdr --ps1` shows it in your prompt |
+| **Last Output** | `cmdr out [pattern]` re-reads/greps the last run's output without re-running (`CMDR_RECORD=0` to disable) |
+| **Project Init** | `cmdr init` autodetects npm/cargo/go/python/make and scaffolds a trusted `.cmdr.json` |
 | **Workflow Engine** | Conditional, capturing, retrying, parallel multi-step workflows (`--flow`) |
 | **Secrets** | `{NAME}` resolved from `pass`/`cmd`/`env`/`age`/`file` at run time, kept out of history |
 | **Lint** | `--lint` validates stores, packs, and workflows |
