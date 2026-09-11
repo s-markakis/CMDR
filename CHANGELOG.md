@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Quick run by tag/alias/unique prefix**: `cmdr <tag> [args...]` runs a
+  command directly (no `-r`). The name may be a unique prefix or substring —
+  `cmdr sqlm` → `sqlmap` — resolving exact tag/alias first, then a unique
+  prefix, then a unique substring; ambiguous names fail safe (run nothing).
+- **Placeholder memory**: interactive `{VAR}` prompts pre-fill the last value
+  entered for that placeholder (per workspace), so a bare Enter reuses it.
+- **Auto `{LHOST}` / `{LPORT}`**: `{LHOST}` fills from the VPN interface
+  (`$CMDR_IFACE`, default `tun0`; falls back to the default-route source IP)
+  and `{LPORT}` from `$CMDR_LPORT` (default `4444`) — reverse shells and
+  payloads resolve without lookups. Explicit env/arg/`{VAR:=default}` still win.
+- **Quick target**: `cmdr t <ip|host>` (alias `target`) sets `{TARGET}` for the
+  whole workspace in one keystroke; `cmdr t` shows it. `cmdr --ps1` prints a
+  compact prompt segment (`[cmdr:<workspace>→<target>]`) for embedding in `PS1`.
+- **Last-output reuse**: every run records its combined output; `cmdr out`
+  prints it and `cmdr out <pattern>` greps it, so a scan result can be re-read
+  without re-running. On by default (streams to the terminal, preserves
+  line-based interactivity); set `CMDR_RECORD=0` to skip it (e.g. full-screen
+  tools). The `.cmdr_last_output` file is kept out of `--sync`.
+- **`cmdr init`**: autodetects the project toolchain (npm/cargo/go/python/make)
+  and scaffolds `build`/`test`/`run`/`lint` into a **trusted** `.cmdr.json`, so
+  a repo is `cmdr test`-ready. Non-destructive (existing tags kept); rejects an
+  invalid existing `.cmdr.json`.
 - **`/etc/hosts` sync for the host model**: `cmdr --host sync-etc` mirrors every
   workspace host that has a `--hostname` into a managed, per-workspace block in
   `/etc/hosts` (`# >>> cmdr:<workspace> >>>` … `# <<< cmdr:<workspace> <<<`).
@@ -43,15 +65,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   missing-tool summary right after importing a pack.
 
 ### Changed
+- **Interactive menu consolidated and expanded**: the three overlapping menus
+  are now two — the fzf-less `--pick` falls back to the scrolling bash selector,
+  and `-m` delegates to the same hub as `-I`/`--menu`. The hub gained playbooks,
+  workflows, findings (view/add), run history (view / re-run last / re-run from
+  a list), hosts (view/add), a report action, and an optional host-target step
+  in the run flow. The pure-bash selectors gained a `/` substring filter
+  (multi-select ticks tracked by absolute index, so filtering never drops one);
+  view actions page through `less`.
 - **`--host sync-etc` on an empty inventory now clears the block**: removing the
   last host with a `--hostname` and re-syncing tidies the managed `/etc/hosts`
   block away, instead of leaving it stale (mirror semantics: nothing in →
   nothing out). The `delhost` shim re-syncs after removal (`--keep-etc` opts out).
 - **CI shellcheck now covers `contrib/*.sh`**, and the test suite gains sections
   for `--doctor`, `cmdr-install-tool` (plan logic), the `/etc/hosts` empty-clear
-  path, and the `addhost`/`delhost` shims (197 assertions, up from 167).
+  path, the `addhost`/`delhost` shims, and the speed helpers above
+  (249 assertions, up from 167).
 
 ### Fixed
+- **Interactive menu no longer runs everything on cancel**: pressing ESC/`q` at
+  the run action step aborted to a `run` default, silently executing every
+  ticked command. It now cancels.
 - **zsh completion no longer errors when sourced before `compinit`**:
   `cmdr_completion.bash` loaded `bashcompinit` *after* its first `complete -F`
   call, so a fresh zsh printed `command not found: complete` / `compdef`. It now
