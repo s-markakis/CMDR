@@ -163,6 +163,18 @@ resolve_fuzzy() {
     return 1
 }
 
+# Up to 5 tags whose name/alias prefixes or contains the input — for a
+# "did you mean" hint after a failed/ambiguous lookup. Space-separated.
+_fuzzy_suggest() {
+    local input="$1" effective
+    effective=$(get_effective_commands)
+    echo "$effective" | jq -r --arg q "$(printf '%s' "$input" | tr '[:upper:]' '[:lower:]')" '
+        to_entries[] | .key as $k
+        | ([$k] + (.value.aliases // [])) | map(ascii_downcase) as $cs
+        | select(any($cs[]; startswith($q)) or any($cs[]; index($q) != null))
+        | $k' 2>/dev/null | sort -u | head -5 | paste -sd' ' -
+}
+
 # Substitute {KEY} placeholders with values from the workspace environment.
 # Only exact case matches are replaced.
 resolve_env_vars() {
@@ -192,6 +204,28 @@ _placeholder_set_kv() {
     tmp_file=$(_mktemp_beside "$PLACEHOLDER_FILE")
     jq --arg k "$key" --arg v "$val" '. + {($k): $v}' "$PLACEHOLDER_FILE" > "$tmp_file" \
         && mv "$tmp_file" "$PLACEHOLDER_FILE"
+}
+
+# Interactively prompt for a placeholder value (used from the CLI, the fzf
+# picker, and the -I menu alike). Pre-fills the last value used; remembers the
+# answer. $2=1 marks it required — an empty answer then fails. Prompt goes to
+# stderr; the chosen value is printed to stdout.
+_prompt_placeholder() {
+    local name="$1" required="${2:-0}" value last req=""
+    last=$(_placeholder_get "$name")
+    [ "$required" = 1 ] && req=" (required)"
+    if [ -n "$last" ]; then
+        read -r -p "Enter value for $name$req [$last]: " value
+        [ -z "$value" ] && value="$last"
+    else
+        read -r -p "Enter value for $name$req: " value
+    fi
+    if [ "$required" = 1 ] && [ -z "$value" ]; then
+        echo -e "${RED}Error:${NC} '{$name}' is required." >&2
+        return 1
+    fi
+    with_store_lock _placeholder_set_kv "$name" "$value"
+    printf '%s' "$value"
 }
 
 # Source IP of the VPN/attack interface, for auto-filling {LHOST}. Prefers
@@ -274,8 +308,16 @@ resolve_command() {
         elif [ "$mod" = "default" ]; then
             value="$default"
         elif [ "$mod" = "required" ]; then
-            echo -e "${RED}Error:${NC} Required value '{$name}' not provided." >&2
-            return 1
+            # Required: prompt on an interactive terminal (so the fzf picker and
+            # the -I menu ask instead of erroring); fail closed only when there
+            # is no terminal to ask — a piped/scripted run — or during dry-run.
+            if [ -t 0 ] && [ "$DRY_RUN" != true ]; then
+                value=$(_prompt_placeholder "$name" 1) || return 1
+            else
+                echo -e "${RED}Error:${NC} Required value '{$name}' not provided." >&2
+                echo -e "       Pass it as an argument (${CYAN}cmdr <tag> <$name>${NC}) or set it once (${CYAN}cmdr --env $name=<value>${NC})." >&2
+                return 1
+            fi
         elif autoval=$(_auto_placeholder "$name") && [ -n "$autoval" ]; then
             # Well-known placeholder (e.g. {LHOST}/{LPORT}) filled automatically.
             value="$autoval"
@@ -283,16 +325,10 @@ resolve_command() {
             # Never block on a prompt during a dry run; show the gap instead.
             value="<$name>"
         else
-            # Prompt, pre-filling the last value used for this placeholder so a
-            # bare Enter reuses it.
-            local _last; _last=$(_placeholder_get "$name")
-            if [ -n "$_last" ]; then
-                read -p "Enter value for $name [$_last]: " value
-                [ -z "$value" ] && value="$_last"
-            else
-                read -p "Enter value for $name: " value
-            fi
-            with_store_lock _placeholder_set_kv "$name" "$value"
+            # Prompt (shown only on a terminal), pre-fill the last value used so a
+            # bare Enter reuses it, and remember the answer. On a pipe/EOF this
+            # reads the piped value or falls back to the remembered one.
+            value=$(_prompt_placeholder "$name" 0)
         fi
 
         # Replace every occurrence of this exact token in one shot.
