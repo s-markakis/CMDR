@@ -449,14 +449,15 @@ newdata
 okg  "target-set"      "TARGET. = 10.10.11.5"        "$C" t 10.10.11.5
 okg  "target-show"     "10.10.11.5"                  "$C" t
 okg  "ps1-segment"     "\[cmdr:default"              "$C" --ps1
-# fuzzy prefix run (bare word + -r), exact still wins, ambiguous fails safe
-"$C" -a sqlmap 'sqlmap -u {TARGET}' web >/dev/null 2>&1
+# fuzzy prefix run (bare word + -r), exact still wins, ambiguous fails safe.
+# echo-based so add-time tool validation passes on bare CI runners.
+"$C" -a sqlmap 'echo sqlmap -u {TARGET}' web >/dev/null 2>&1
 okg  "fuzzy-prefix"    "sqlmap -u 10.10.11.5"        "$C" -n sqlm
 okg  "bare-word-run"   "sqlmap -u 10.10.11.5"        "$C" -n sqlmap
 "$C" -a scana 'echo A' x >/dev/null 2>&1; "$C" -a scanb 'echo B' x >/dev/null 2>&1
 okc  "fuzzy-ambiguous" 1                             "$C" -n scan
 # auto {LHOST}/{LPORT}: LPORT is deterministic; LHOST detection is host-specific
-"$C" -a rev 'nc {LHOST} {LPORT}' shells >/dev/null 2>&1
+"$C" -a rev 'echo nc {LHOST} {LPORT}' shells >/dev/null 2>&1
 okg  "auto-lport-run"  "nc .* 9001"                  env CMDR_LPORT=9001 "$C" -n rev
 # placeholder memory: prompted value is stored for reuse
 "$C" -a greet 'echo hi {WHO}' x >/dev/null 2>&1

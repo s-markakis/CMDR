@@ -503,9 +503,13 @@ _imenu_add_host() {
     if ! _etc_valid_ip "$ip"; then echo -e "${RED}Not a valid IP.${NC}" >&2; return 0; fi
     printf "Name [default: %s]: " "$ip" >&2; IFS= read -r name </dev/tty || return 0
     printf "Hostname(s), space-separated (optional): " >&2; IFS= read -r hn </dev/tty || return 0
-    CMDR_HOST_NAME="$name"; CMDR_HOST_HOSTNAME="$hn"
+    # Consumed by host_add via these globals (dynamic use shellcheck can't see);
+    # both are always re-set on the next call, so no reset is needed here.
+    # shellcheck disable=SC2034
+    CMDR_HOST_NAME="$name"
+    # shellcheck disable=SC2034
+    CMDR_HOST_HOSTNAME="$hn"
     host_add "$ip"
-    CMDR_HOST_NAME=""; CMDR_HOST_HOSTNAME=""
 }
 
 # Write the engagement report — to a file, or to screen (paged).
