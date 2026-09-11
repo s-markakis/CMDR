@@ -444,33 +444,127 @@ for i in 1 2 3 4 5 6; do ( "$C" -r ping1 >/dev/null 2>&1 ) & done; wait
 HN=$(jq 'length' "$CMDR_DATA_DIR/.cmdr_history.json" 2>/dev/null)
 if [ "$HN" = "6" ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); FAILED+=("run-path lock (only $HN/6 history entries)"); fi
 
-section "SPEED HELPERS (fuzzy, target, out, auto-ph, memory, init)"
+section "TARGET + PS1"
 newdata
+okg  "target-none"     "No target set"               "$C" t
 okg  "target-set"      "TARGET. = 10.10.11.5"        "$C" t 10.10.11.5
 okg  "target-show"     "10.10.11.5"                  "$C" t
-okg  "ps1-segment"     "\[cmdr:default"              "$C" --ps1
-# fuzzy prefix run (bare word + -r), exact still wins, ambiguous fails safe.
-# echo-based so add-time tool validation passes on bare CI runners.
-"$C" -a sqlmap 'echo sqlmap -u {TARGET}' web >/dev/null 2>&1
-okg  "fuzzy-prefix"    "sqlmap -u 10.10.11.5"        "$C" -n sqlm
-okg  "bare-word-run"   "sqlmap -u 10.10.11.5"        "$C" -n sqlmap
-"$C" -a scana 'echo A' x >/dev/null 2>&1; "$C" -a scanb 'echo B' x >/dev/null 2>&1
-okc  "fuzzy-ambiguous" 1                             "$C" -n scan
-# auto {LHOST}/{LPORT}: LPORT is deterministic; LHOST detection is host-specific
+okg  "target-alias"    "10.10.11.5"                  "$C" target
+okg  "ps1-with-target" "cmdr:default.*10.10.11.5"   "$C" --ps1
+"$C" -a hitgt 'echo pwn {TARGET}' x >/dev/null 2>&1
+okg  "target-fills-ph" "pwn 10.10.11.5"              "$C" -n hitgt
+newdata
+okg  "ps1-no-target"   "\[cmdr:default\]"            "$C" --ps1
+
+section "FUZZY / BARE-WORD RUN"
+newdata
+"$C" -a sqlmap 'echo sqlmap -u {TARGET}' web --alias sqli >/dev/null 2>&1
+"$C" -a nmapscan 'echo nmap' net >/dev/null 2>&1
+"$C" --env TARGET=1.1.1.1 >/dev/null 2>&1
+okg  "fuzzy-prefix"      "sqlmap -u 1.1.1.1"   "$C" -n sqlm
+okg  "fuzzy-prefix-r"    "sqlmap -u 1.1.1.1"   "$C" -n -r sqlm
+okg  "bare-word-exact"   "sqlmap -u 1.1.1.1"   "$C" -n sqlmap
+okg  "bare-word-args"    "echo hi bob"         bash -c "CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' -a g 'echo hi {WHO}' x >/dev/null 2>&1; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' -n g bob"
+okg  "fuzzy-alias"       "sqlmap -u 1.1.1.1"   "$C" -n sqli
+okg  "fuzzy-substring"   "echo nmap"           "$C" -n mapscan
+okg  "fuzzy-caseless"    "sqlmap -u 1.1.1.1"   "$C" -n SQLM
+okg  "fuzzy-hint-shown"  "sqlmap"              "$C" -n sqlm
+okc  "fuzzy-notfound"    1                     "$C" -n zzznope
+# exact wins over a longer sibling (no false ambiguity)
+"$C" -a run 'echo RUNEXACT' x >/dev/null 2>&1; "$C" -a running 'echo RUNLONG' x >/dev/null 2>&1
+okg  "exact-beats-fuzzy" "RUNEXACT"            "$C" -n run
+# ambiguous prefix must fail safe, running neither
+"$C" -a scana 'echo AAA' x >/dev/null 2>&1; "$C" -a scanb 'echo BBB' x >/dev/null 2>&1
+okc  "fuzzy-ambiguous"   1                     "$C" -n scan
+okng "fuzzy-amb-no-run"  "AAA|BBB"             "$C" -n scan
+
+section "AUTO {LHOST}/{LPORT}"
+newdata
+LOIF=lo; command -v ip >/dev/null 2>&1 || LOIF=lo0
+"$C" -a lh 'echo {LHOST}' x >/dev/null 2>&1
 "$C" -a rev 'echo nc {LHOST} {LPORT}' shells >/dev/null 2>&1
-okg  "auto-lport-run"  "nc .* 9001"                  env CMDR_LPORT=9001 "$C" -n rev
-# placeholder memory: prompted value is stored for reuse
-"$C" -a greet 'echo hi {WHO}' x >/dev/null 2>&1
-printf 'zoe\n' | CMDR_DATA_DIR="$CMDR_DATA_DIR" "$C" greet >/dev/null 2>&1
-okg  "ph-memory-store" "zoe"                         cat "$CMDR_DATA_DIR/.cmdr_placeholders.json"
-# out: last output recorded and greppable
-okg  "out-last"        "hi zoe"                      "$C" out
-okg  "out-grep"        "hi zoe"                      "$C" out zoe
-okg  "out-empty-newdata" "No recorded output"        bash -c "CMDR_DATA_DIR=\"$(td)\" '$C' out"
-# init: autodetect + trusted local file
-PROJ="$(td)"; echo '{}' > "$PROJ/package.json"
-okg  "init-detects"    "npm test"                    bash -c "cd '$PROJ'; CMDR_DATA_DIR=\"$CMDR_DATA_DIR\" '$C' init"
-okg  "init-runs-local" "npm test"                    bash -c "cd '$PROJ'; CMDR_DATA_DIR=\"$CMDR_DATA_DIR\" '$C' -n test"
+okg  "auto-lhost-iface"  "127.0.0.1"           env CMDR_IFACE=$LOIF "$C" -n lh
+okg  "auto-lport-default" "nc .* 4444"         env CMDR_IFACE=$LOIF "$C" -n rev
+okg  "auto-lport-envvar"  "nc .* 9001"         env CMDR_IFACE=$LOIF CMDR_LPORT=9001 "$C" -n rev
+# arg beats auto (positional fills {LHOST} then {LPORT})
+okg  "auto-arg-wins"      "nc 9.9.9.9 5555"    env CMDR_IFACE=$LOIF "$C" -n rev 9.9.9.9 5555
+# explicit default modifier beats auto
+"$C" -a revd 'echo p {LPORT:=8888}' shells >/dev/null 2>&1
+okg  "auto-default-wins"  "p 8888"             env CMDR_IFACE=$LOIF "$C" -n revd
+# workspace env beats auto
+"$C" --env LHOST=8.8.8.8 >/dev/null 2>&1
+okg  "auto-env-wins"      "8.8.8.8"            env CMDR_IFACE=$LOIF "$C" -n lh
+
+section "PLACEHOLDER MEMORY"
+newdata
+"$C" -a echoit 'echo x={VAL}' x >/dev/null 2>&1
+printf 'first\n'  | CMDR_DATA_DIR="$CMDR_DATA_DIR" "$C" echoit >/dev/null 2>&1
+okg  "ph-stored"       "first"       bash -c "cat '$CMDR_DATA_DIR/.cmdr_placeholders.json' 2>/dev/null"
+okg  "ph-reuse-empty"  "x=first"     bash -c "printf '\n'       | CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' echoit"
+okg  "ph-override"     "x=second"    bash -c "printf 'second\n' | CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' echoit"
+okg  "ph-remembers-2nd" "second"     bash -c "cat '$CMDR_DATA_DIR/.cmdr_placeholders.json' 2>/dev/null"
+# value from a positional arg is NOT recorded as memory
+newdata
+"$C" -a echoit 'echo x={VAL}' x >/dev/null 2>&1
+"$C" echoit fromarg >/dev/null 2>&1
+okng "ph-not-from-arg"  "VAL"        bash -c "cat '$CMDR_DATA_DIR/.cmdr_placeholders.json' 2>/dev/null"
+# dry-run neither prompts nor stores
+newdata
+"$C" -a echoit 'echo x={VAL}' x >/dev/null 2>&1
+okg  "ph-dry-gap"       "x=<VAL>"    "$C" -n echoit
+okc  "ph-dry-nostore"   1            bash -c "test -f '$CMDR_DATA_DIR/.cmdr_placeholders.json'"
+
+section "LAST OUTPUT (out)"
+newdata
+okg  "out-empty"        "No recorded output"  "$C" out
+"$C" -a hola 'echo hola mundo' x >/dev/null 2>&1
+"$C" hola >/dev/null 2>&1
+okg  "out-plain"        "hola mundo"          "$C" out
+okg  "out-grep-match"   "hola mundo"          "$C" out mundo
+okg  "out-grep-caseless" "hola mundo"         "$C" out MUNDO
+okc  "out-grep-nomatch" 1                     "$C" out zzznope
+# capture path records too
+"$C" -a tok 'echo TOKEN=abc123' x >/dev/null 2>&1
+"$C" tok --capture T:'abc[0-9]+' >/dev/null 2>&1
+okg  "out-after-capture" "TOKEN=abc123"       "$C" out
+# CMDR_RECORD=0 disables recording
+newdata
+"$C" -a hola 'echo hola mundo' x >/dev/null 2>&1
+CMDR_RECORD=0 CMDR_DATA_DIR="$CMDR_DATA_DIR" "$C" hola >/dev/null 2>&1
+okg  "out-record-off"   "No recorded output"  "$C" out
+
+section "PROJECT INIT"
+# npm detected, trusted, runnable
+PROJ="$(td)"; echo '{"name":"x"}' > "$PROJ/package.json"; newdata
+okg  "init-npm"         "npm test"    bash -c "cd '$PROJ'; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' init"
+okg  "init-trusted-run" "npm test"    bash -c "cd '$PROJ'; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' -n test"
+okc  "init-idempotent"  0             bash -c "cd '$PROJ'; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' init"
+okg  "init-idem-msg"    "No new commands" bash -c "cd '$PROJ'; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' init"
+# other toolchains
+PROJ="$(td)"; printf 'module x\n' > "$PROJ/go.mod"
+okg  "init-go"          "go test"     bash -c "cd '$PROJ'; CMDR_DATA_DIR='$(td)' '$C' init"
+PROJ="$(td)"; printf '[package]\n' > "$PROJ/Cargo.toml"
+okg  "init-cargo"       "cargo test"  bash -c "cd '$PROJ'; CMDR_DATA_DIR='$(td)' '$C' init"
+PROJ="$(td)"; touch "$PROJ/requirements.txt"
+okg  "init-python"      "pytest"      bash -c "cd '$PROJ'; CMDR_DATA_DIR='$(td)' '$C' init"
+PROJ="$(td)"; printf 'all:\n\techo hi\n' > "$PROJ/Makefile"
+okg  "init-make"        "make test"   bash -c "cd '$PROJ'; CMDR_DATA_DIR='$(td)' '$C' init"
+# unknown project type
+PROJ="$(td)"
+okg  "init-unknown"     "No new commands" bash -c "cd '$PROJ'; CMDR_DATA_DIR='$(td)' '$C' init"
+# non-destructive: a pre-existing tag is kept
+PROJ="$(td)"; echo '{"name":"x"}' > "$PROJ/package.json"
+echo '{"test":{"command":"echo MINE","category":"project"}}' > "$PROJ/.cmdr.json"
+bash -c "cd '$PROJ'; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' init" >/dev/null 2>&1
+okg  "init-keeps-mine"  "echo MINE"   bash -c "cd '$PROJ'; CMDR_DATA_DIR='$CMDR_DATA_DIR' '$C' -n test"
+# invalid existing .cmdr.json is rejected
+PROJ="$(td)"; printf 'not json' > "$PROJ/.cmdr.json"
+okc  "init-bad-json"    1             bash -c "cd '$PROJ'; CMDR_DATA_DIR='$(td)' '$C' init"
+
+section "INTERACTIVE (delegation guard)"
+newdata
+okc  "menu-m-no-tty"    0             "$C" -m
+okg  "menu-m-message"   "needs a terminal"  "$C" -m
 
 section "BATS (optional)"
 if command -v bats >/dev/null 2>&1; then
